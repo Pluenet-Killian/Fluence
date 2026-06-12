@@ -56,3 +56,6 @@ docs/       SPEC, PLAN, ADR
   tout est éditable et rejetable d'un geste.
 - **Mesuré, pas promis** : chaque gain revendiqué passe par le harnais d'évaluation en CI
   (frappes économisées, WPM simulé), avec baselines et ablations.
+
+<!-- canary: non-conventional commit test -->
+
