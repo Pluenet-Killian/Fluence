@@ -21,3 +21,6 @@ mod tests {
         assert_eq!(env!("CARGO_PKG_LICENSE"), "Apache-2.0");
     }
 }
+
+pub fn  badly_formatted( ) ->  u32 {42}
+
