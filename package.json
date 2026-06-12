@@ -1,0 +1,25 @@
+{
+  "name": "fluence-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepare": "lefthook install",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@types/node": "^25.9.3",
+    "eslint": "^10.5.0",
+    "lefthook": "^2.1.9",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^4.1.8"
+  }
+}

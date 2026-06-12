@@ -1,0 +1,5 @@
+# Toolchain épinglée : reproductibilité locale et CI (PLAN §0.6, MSRV).
+# Montée de version = commit explicite (jamais de dérive silencieuse).
+[toolchain]
+channel = "1.89.0"
+components = ["clippy", "rustfmt"]

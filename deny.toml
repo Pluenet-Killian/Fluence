@@ -23,10 +23,8 @@ allow = [
     "Unicode-3.0",
 ]
 confidence-threshold = 0.93
-
-[[licenses.exceptions]]
-name = "fluencectl"
-allow = ["AGPL-3.0-only"]
+# Quand les crates AGPL d'apps/ naîtront (fluencectl en Phase 2), elles
+# passeront par des [[licenses.exceptions]] ciblées par nom de crate.
 
 [bans]
 multiple-versions = "warn"

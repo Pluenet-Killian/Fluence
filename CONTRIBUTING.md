@@ -45,6 +45,14 @@ cargo build --workspace          # Rust
 uv sync --directory ml           # Python (ml/)
 ```
 
+> **Windows + anti-cheat kernel (Riot Vanguard, etc.)** : certains drivers anti-cheat
+> bloquent la création des lanceurs `.exe` d'uv (« Failed to update Windows PE
+> resources »). Contournement local sans toucher au projet :
+> `uv sync --directory ml --no-default-groups`, puis
+> `ml/.venv/Scripts/python -m ensurepip && ml/.venv/Scripts/python -m pip install pytest mypy ruff`,
+> et invoquer les outils via `python -m` (ex. `ml/.venv/Scripts/python -m pytest`).
+> La CI n'est pas affectée.
+
 Vérifications locales (ce que la CI exécutera) :
 
 ```bash

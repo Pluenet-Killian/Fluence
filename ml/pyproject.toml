@@ -1,0 +1,48 @@
+# Racine (virtuelle) du workspace uv — pipelines ML offline (SPEC §2.B).
+# Trois membres : data (génération/préparation de corpus), training (LoRA),
+# eval (harnais de simulation, exécuté aussi en CI — D-8.1).
+
+[tool.uv.workspace]
+members = ["data", "training", "eval"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.13",
+    "ruff>=0.8",
+]
+
+# ---- Qualité partagée par tous les membres (PLAN §0.6 : ruff + mypy strict) ----
+
+[tool.ruff]
+line-length = 100
+src = ["data/src", "training/src", "eval/src"]
+
+[tool.ruff.lint]
+# « × » est la typographie des matrices de la SPEC (12 situations × 4 registres) ;
+# légitime en docstring, jamais dans un identifiant.
+allowed-confusables = ["×"]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "RUF", # ruff-specific
+    "D",   # pydocstyle — la doc d'API publique fait partie de la DoD
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["D"]
+
+[tool.mypy]
+strict = true
+files = ["data", "training", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["data/tests", "training/tests", "eval/tests"]

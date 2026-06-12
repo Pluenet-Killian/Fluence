@@ -1,0 +1,12 @@
+# Artefacts
+node_modules/
+dist/
+target/
+.venv/
+pnpm-lock.yaml
+
+# Textes légaux et documents fondateurs : mise en forme manuelle, hors scope.
+LICENSES/
+LICENSE
+LICENSE.md
+*.md

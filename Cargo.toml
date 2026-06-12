@@ -1,0 +1,27 @@
+# Workspace Cargo de Fluence — crates Rust (hub, briques) + outillage du dépôt.
+# Organisation du code : SPEC §2.B (D-2.5). Règles qualité : PLAN §0.6.
+
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/Pluenet-Killian/Fluence"
+authors = ["The Fluence contributors"]
+
+[workspace.lints.rust]
+# Interdit hors crates FFI isolées (PLAN §0.6) ; une future crate -sys
+# définira sa propre table [lints] au lieu d'hériter de celle-ci.
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# pedantic en warn : la CI passe -D warnings, donc bloquant en CI,
+# vivable en développement local. Exceptions justifiées au cas par cas.
+pedantic = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"

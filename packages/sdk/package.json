@@ -1,0 +1,22 @@
+{
+  "name": "@fluence/sdk",
+  "version": "0.0.0",
+  "description": "Typed client for the Fluence hub API (generated types + ergonomic layer)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pluenet-Killian/Fluence.git",
+    "directory": "packages/sdk"
+  },
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  }
+}

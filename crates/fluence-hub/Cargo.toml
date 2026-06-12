@@ -1,0 +1,12 @@
+[package]
+name = "fluence-hub"
+description = "Fluence hub: HTTP/WS API, worker supervision, selection engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
