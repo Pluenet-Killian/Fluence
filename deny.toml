@@ -1,0 +1,39 @@
+# Configuration cargo-deny — bloquant en CI (PLAN §0.6).
+# Licences des dépendances, advisories RustSec, doublons, sources.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Licences acceptables pour les DÉPENDANCES. Nos crates apps/ (AGPL-3.0-only)
+# passent par les exceptions ciblées ci-dessous — l'AGPL n'est jamais acceptée
+# pour une dépendance tierce des briques Apache-2.0 (D-10.1).
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[[licenses.exceptions]]
+name = "fluencectl"
+allow = ["AGPL-3.0-only"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Les membres du workspace se référencent par chemin sans version.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
