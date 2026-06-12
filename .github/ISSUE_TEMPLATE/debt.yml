@@ -1,0 +1,25 @@
+name: Dette technique
+description: Dette assumée, consignée en fin de phase (PLAN §0.3).
+labels: ["debt"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Nature de la dette
+      description: Ce qui a été sacrifié ou reporté, et où (crate/package/module).
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Pourquoi elle a été contractée
+      description: Contexte de la décision (phase, contrainte, arbitrage).
+    validations:
+      required: true
+  - type: textarea
+    id: payoff
+    attributes:
+      label: Condition de remboursement
+      description: Quand/quoi doit déclencher son traitement (phase N, avant jalon X, si Y survient).
+    validations:
+      required: true

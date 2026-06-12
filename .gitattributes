@@ -1,0 +1,19 @@
+# Normalisation : LF partout dans le dépôt et les working copies (CI Windows + Linux).
+* text=auto eol=lf
+
+# Scripts Windows : CRLF requis par cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=lf
+
+# Binaires : jamais de normalisation.
+*.png binary
+*.jpg binary
+*.ico binary
+*.gguf binary
+*.onnx binary
+*.wav binary
+*.opus binary
+
+# Fixtures volumineuses (traces d'entrée, audio, dialogues) : Git LFS.
+# Les patterns seront ajoutés avec les premières fixtures (Phase 1+), cf. PLAN §1.

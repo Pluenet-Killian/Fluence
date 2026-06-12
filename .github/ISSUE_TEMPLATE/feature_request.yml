@@ -1,0 +1,29 @@
+name: Proposition de fonctionnalité
+description: Une amélioration ou une nouvelle capacité.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Toute feature se justifie par sa contribution au **débit conversationnel effectif**
+        (SPEC §1.2) — directe (vitesse) ou indirecte (fatigue, abandon, configuration).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème à résoudre
+      description: Pour qui (Claire, Marc, Sophie, Jean… — SPEC D-1.1) et dans quelle situation ?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+    validations:
+      required: true
+  - type: textarea
+    id: metric
+    attributes:
+      label: Contribution à l'étoile polaire
+      description: En quoi cela améliore les mots/minute effectifs (ou réduit fatigue/abandon) ?
+    validations:
+      required: true

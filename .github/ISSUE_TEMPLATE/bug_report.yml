@@ -1,0 +1,37 @@
+name: Rapport de bug
+description: Un comportement ne correspond pas à la SPEC ou à l'attendu.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Rappel (PLAN §0.2) : **bug = test rouge d'abord**. La PR de correction
+        commencera par un test qui reproduit ce bug.
+        ⚠️ N'incluez **jamais** de données P0 (contenu de conversations, mémoire
+        personnelle, enregistrements de voix) dans une issue.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Comportement observé
+      description: Ce qui se passe, avec les étapes de reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+      description: Ce qui devrait se passer. Référencer la SPEC (§, D-x.y) si applicable.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environnement
+      placeholder: "OS, commit/version, matériel pertinent (palier, GPU…)"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / sortie
+      description: Logs `tracing` pertinents — vérifiez l'absence de toute donnée personnelle.

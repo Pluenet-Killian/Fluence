@@ -1,0 +1,32 @@
+# Rust
+target/
+
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Couverture
+coverage/
+*.profraw
+lcov.info
+
+# Éditeurs / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Artefacts locaux (jamais de poids de modèles dans git — D-3.2 : manifestes seulement)
+*.gguf
+*.onnx
+.fluence-cache/
