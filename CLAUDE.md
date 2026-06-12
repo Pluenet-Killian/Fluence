@@ -32,4 +32,24 @@ Plateforme de communication open source, **locale et intégrée**, pour le handi
 
 ## Commandes
 
-*(À compléter en Phase 0 : build, test par écosystème, `xtask check-contracts`, `xtask run-eval --suite pr`, lancement du hub en dev.)*
+```bash
+# Rust
+cargo build --workspace && cargo test --workspace
+cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
+cargo xtask check-licenses          # en-têtes SPDX + architecture (D-10.1)
+cargo xtask check-contracts         # disponible en Phase 1 (exit 2 avant)
+cargo xtask run-eval --suite pr     # disponible en Phase 3 (exit 2 avant)
+cargo deny check                    # licences + advisories des dépendances
+
+# TypeScript (pnpm via corepack ; `pnpm install` installe aussi les hooks git)
+pnpm -r lint && pnpm -r typecheck && pnpm -r build && pnpm -r test
+pnpm format:check                   # prettier
+
+# Python (ml/)
+uv sync --directory ml
+uv run --directory ml ruff check . && uv run --directory ml ruff format --check .
+uv run --directory ml mypy . && uv run --directory ml pytest
+
+# Lancement du hub en dev : Phase 2+.
+# Windows + anti-cheat kernel (lanceurs uv bloqués) : voir CONTRIBUTING.md.
+```

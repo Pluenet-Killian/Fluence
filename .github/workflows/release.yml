@@ -1,0 +1,47 @@
+# Release — dry-run de packaging (PLAN Phase 0, tâche 0.5).
+# Aucun binaire livrable avant la Phase 2 (hub) / Phase 7 (installeurs
+# signés, D-11.2) : ce workflow valide le câblage build-release → artefacts.
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: packaging dry-run (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Rust workspace (release)
+        run: cargo build --workspace --release
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build TS packages
+        run: pnpm -r build
+      - name: Collect dry-run artifacts
+        shell: bash
+        run: |
+          mkdir -p dist-dry-run
+          cp -r packages/sdk/dist dist-dry-run/sdk
+          cp -r packages/ui/dist dist-dry-run/ui
+          cp -r packages/integrations/dist dist-dry-run/integrations
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-${{ matrix.os }}
+          path: dist-dry-run/
+          retention-days: 7

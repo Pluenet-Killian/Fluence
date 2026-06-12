@@ -1,0 +1,120 @@
+# CI principale — lint + T1 (unit/doctests) + T3 (contrats, dès la Phase 1).
+# Matrice Windows + Linux : la Definition of Done exige les deux OS (PLAN §0.1).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy (pedantic, warnings are errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests (unit + doctests)
+        run: cargo test --workspace
+      - name: Rustdoc (public API docs must build cleanly)
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: SPDX license headers (D-10.1)
+        run: cargo xtask check-licenses
+
+  typescript:
+    name: typescript (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm -r lint
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Build
+        run: pnpm -r build
+      - name: Tests
+        run: pnpm -r test
+      - name: Prettier
+        run: pnpm format:check
+
+  python:
+    name: python (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --directory ml
+      - name: Ruff lint
+        run: uv run --directory ml ruff check .
+      - name: Ruff format
+        run: uv run --directory ml ruff format --check .
+      - name: Mypy (strict)
+        run: uv run --directory ml mypy .
+      - name: Pytest
+        run: uv run --directory ml pytest
+
+  cargo-deny:
+    name: dependency licenses & advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  typos:
+    name: spelling (code only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1
+
+  commitlint:
+    name: conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6

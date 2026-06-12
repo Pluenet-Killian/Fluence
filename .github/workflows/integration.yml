@@ -1,0 +1,36 @@
+# Intégration — T4 (hub réel + workers, kill-tests) et T5 (E2E Playwright).
+# Les vrais tests T4 arrivent en Phase 2 (kill-tests) et T5 en Phase 5.
+# Phase 0 : smoke release cross-OS — le workspace entier compile en release
+# et le binaire xtask fonctionne, préfigurant le pipeline T4.
+name: integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release-smoke:
+    name: release build smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build workspace (release)
+        run: cargo build --workspace --release
+      - name: xtask runs from a release build
+        run: cargo run --release --package xtask -- check-licenses

@@ -1,0 +1,52 @@
+# Nightly — T2 (fuzz, dès Phase 2), T6 (éval/latences, dès Phase 3), soak.
+# Phase 0 : tests release cross-OS (détecte les soucis release-only) et
+# audit advisories quotidien (une CVE peut tomber n'importe quand).
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC, heure creuse décalée
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests-release:
+    name: full tests in release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust tests (release)
+        run: cargo test --workspace --release
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TS build + tests
+        run: pnpm -r build && pnpm -r test
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Python tests
+        run: uv sync --directory ml && uv run --directory ml pytest
+
+  advisories:
+    name: daily dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
