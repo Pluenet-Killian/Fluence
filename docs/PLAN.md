@@ -263,8 +263,8 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 
 | Phase | État | Tag | Notes |
 |---|---|---|---|
-| 0 — Usine | ⬜ à lancer | — | |
-| 1 — Contrat | ⬜ | — | |
+| 0 — Usine | ✅ terminée (2026-06-13) | `phase-0-done` | 4 workflows verts Win+Linux ; vérifications « l'usine se teste » passées ; détails session 1 |
+| 1 — Contrat | ⬜ à lancer | — | prochaine phase |
 | 2 — Hub & supervision | ⬜ | — | |
 | 3 — Boussole | ⬜ | — | |
 | 4 — Moteur | ⬜ | — | |
@@ -273,3 +273,13 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 | 7 — Durcissement → A1 | ⬜ | — | |
 
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
+
+### Journal de session
+
+**Session 1 — 2026-06-13 — Phase 0 complète.**
+- **Fait** : repo initialisé et poussé (`Pluenet-Killian/Fluence`, squash-only) ; arborescence §2.B ; SPEC/PLAN/Project versés dans `docs/` ; gouvernance (CONTRIBUTING, SECURITY D-9.3, CODE_OF_CONDUCT) ; templates PR/issues (dont `debt`) ; licences D-10.1 (textes canoniques, copies par sous-arbre, en-têtes SPDX vérifiés par `cargo xtask check-licenses` — testé sur le repo par un test d'intégration) ; `deny.toml` ; 3 workspaces (Cargo resolver 3 / edition 2024 / MSRV 1.89 / clippy pedantic / forbid unsafe ; pnpm TS 6 strict + eslint 10 flat strictTypeChecked + vitest 4 + prettier ; uv ml/ à racine virtuelle + ruff + mypy strict) ; 7 crates + xtask + 3 packages TS + 3 packages Python avec un test réel chacun (invariant de licence D-10.1) ; hooks lefthook < 5 s (mesurés 0,8–2,7 s) + commitlint ; 4 workflows CI ; ADR-0001/0002/0003.
+- **Vérifications « l'usine se teste »** : builds+tests verts localement sur les 3 écosystèmes ; CI verte Windows+Linux sur main (ci, integration, nightly, release — tous exécutés) ; PR-cobaye lint cassé → `ci` rouge (PR #1) ; PR-cobaye commit non conventionnel → hook local rouge (vérifié) + job commitlint rouge (PR #2) ; dépendance MPL-2.0 ajoutée → `cargo deny` rouge (exit 4), retirée.
+- **Déviations consignées** : `ml/` et `xtask/` sous Apache-2.0 (non couverts par D-10.1 — justification ADR-0003 §5) ; `apps/*` en placeholders README jusqu'à leurs phases (ADR-0003 §10, la Phase 0 exclut le code fonctionnel) ; frontière de langue code EN / docs FR (ADR-0003 §9).
+- **Environnement local (pas une dette projet)** : un driver anti-cheat kernel (Riot Vanguard) bloque la création des lanceurs `.exe` d'uv sur la machine de dev — contournement documenté dans CONTRIBUTING (« python -m », venv seedé pip) ; la CI n'est pas affectée. À réévaluer si uv ajoute une option sans ressources PE.
+- **Dette** : formatteur YAML/TOML absent → issue `debt` #3.
+- **Reprise session suivante** : Phase 1 (« Le contrat ») — commencer par 1.1 (types FluenceInput v1 dans `fluence-protocol` avec schemars), la chaîne `xtask check-contracts` (1.3) lève son stub `exit 2`.
