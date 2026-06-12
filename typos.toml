@@ -1,0 +1,15 @@
+# typos — orthographe du CODE (identifiants et commentaires, en anglais).
+# La prose française (documents, configs commentées en FR) est exclue : le
+# dictionnaire de typos est anglais et produirait des faux positifs massifs.
+
+[files]
+extend-exclude = [
+    "*.md",
+    "docs/",
+    "LICENSES/",
+    "LICENSE",
+    "*.toml",
+    "*.yml",
+    "*.yaml",
+    "*.lock",
+]

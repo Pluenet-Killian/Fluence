@@ -1,0 +1,41 @@
+# Hooks git locaux (PLAN Phase 0, tâche 0.4) — budget < 5 s à cache chaud :
+# un hook lent finit désactivé. Installés par `pnpm install` (script prepare).
+# La CI ré-exécute tout : les hooks sont un retour rapide, pas la barrière.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      glob: "*.rs"
+      run: rustfmt --edition 2024 --check {staged_files}
+    - name: clippy
+      glob: "*.rs"
+      # Par workspace (clippy ne travaille pas par fichier) ; ~1–2 s à cache
+      # chaud, seule la première exécution est lente.
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    - name: eslint
+      glob: "*.{ts,tsx}"
+      run: pnpm exec eslint {staged_files}
+    - name: prettier
+      glob: "*.{ts,tsx,js,mjs,json,yml,yaml}"
+      run: pnpm exec prettier --check {staged_files}
+    - name: ruff
+      root: "ml/"
+      glob: "*.py"
+      # `python -m ruff` plutôt que l'exe : contourne les drivers anti-cheat
+      # qui bloquent les lanceurs uv (cf. CONTRIBUTING) ; --no-sync pour ne
+      # pas re-résoudre l'environnement à chaque commit.
+      run: uv run --no-sync python -m ruff check {staged_files}
+    - name: typos
+      # Code seulement : les identifiants et commentaires de code sont en
+      # anglais ; la prose FR (.md, configs commentées) sort du scope.
+      glob: "*.{rs,ts,tsx,py,js,mjs}"
+      run: typos {staged_files}
+    - name: licenses
+      glob: "*.{rs,ts,tsx,py}"
+      run: cargo xtask check-licenses
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
