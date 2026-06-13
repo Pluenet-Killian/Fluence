@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! HTTP API of the hub (SPEC §5.A) — Phase 2 surface.
+//! HTTP API of the hub (SPEC §5.A) — the mounted surface grows phase by phase.
 //!
 //! The router is built from [`MOUNTED`], a local table of (method, path,
 //! scopes); a test asserts it against the `fluence-protocol` registry
 //! (same path ⇒ same scopes, and mounted ⊆ declared) so the implementation
-//! cannot drift from the contract. Routes of later phases (suggest,
-//! next-chars…) are simply not mounted yet: a 404 is honest — the
-//! capability does not exist.
+//! cannot drift from the contract. Routes of unbuilt capabilities are simply
+//! not mounted yet: a 404 is honest — the capability does not exist.
 
+pub mod input;
 pub mod pair;
 pub mod sessions;
 pub mod suggest;
 pub mod system;
+pub mod voice;
 pub mod ws;
 
 use axum::Router;
@@ -35,8 +36,8 @@ pub struct MountedRoute {
     pub scopes: &'static [Scope],
 }
 
-/// Phase 2 mounted surface. Kept in sync with [`build_router`] by
-/// proximity and asserted against the registry by test.
+/// The mounted surface. Kept in sync with [`build_router`] by proximity and
+/// asserted against the registry by test.
 pub const MOUNTED: &[MountedRoute] = &[
     MountedRoute {
         method: "post",
@@ -82,6 +83,26 @@ pub const MOUNTED: &[MountedRoute] = &[
         method: "post",
         path: "/api/v1/sessions/{id}/suggest",
         scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "post",
+        path: "/api/v1/system/emergency",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "put",
+        path: "/api/v1/input/targets",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "post",
+        path: "/api/v1/voice/speak",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "get",
+        path: "/api/v1/voice/voices",
+        scopes: &[Scope::Control, Scope::Care],
     },
     MountedRoute {
         method: "get",
@@ -130,8 +151,19 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/sessions/{id}/suggest",
             post(suggest::stream_suggest),
         )
+        .route("/api/v1/system/emergency", post(system::emergency))
+        .route("/api/v1/input/targets", put(input::put_targets))
+        .route("/api/v1/voice/speak", post(voice::speak))
         .route_layer(axum::middleware::from_fn(auth::require_scope(&[
             Scope::Control,
+        ])));
+
+    // Control + caregiver: the installed-voice list (SPEC §5.A scope table).
+    let voice_list = Router::new()
+        .route("/api/v1/voice/voices", get(voice::voices))
+        .route_layer(axum::middleware::from_fn(auth::require_scope(&[
+            Scope::Control,
+            Scope::Care,
         ])));
 
     // Read-only system surface: every authenticated scope.
@@ -154,6 +186,7 @@ pub fn build_router(state: AppState) -> Router {
     let authed = Router::new()
         .merge(system_only)
         .merge(control)
+        .merge(voice_list)
         .merge(observers)
         .merge(care)
         .route_layer(axum::middleware::from_fn_with_state(
@@ -165,17 +198,26 @@ pub fn build_router(state: AppState) -> Router {
     // parameter — ADR-0004 §1).
     let websocket = Router::new().route("/ws", get(ws::upgrade));
 
-    Router::new()
-        .merge(public)
-        .merge(authed)
-        .merge(websocket)
+    let mut router = Router::new().merge(public).merge(authed).merge(websocket);
+
+    // Serve the web composer as a same-origin PWA when configured (PLAN 5.3):
+    // a fallback under `/`, after the API routes, with an SPA fallback to
+    // `index.html` so client-side routes resolve. Same origin ⇒ no CORS.
+    if let Some(web_dir) = state.config().web_dir.clone() {
+        let index = web_dir.join("index.html");
+        let serve = tower_http::services::ServeDir::new(web_dir)
+            .fallback(tower_http::services::ServeFile::new(index));
+        router = router.fallback_service(serve);
+    }
+
+    router
         // Explicit request-body ceiling (G7): do not depend on axum's
         // implicit default. Generous for a JSON draft (text itself is
         // capped far lower in `put_draft`, F09) yet bounds any single
         // request a local device can send.
         .layer(axum::extract::DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
-        // CORS: strict allowlist — empty in Phase 2 (no web client yet),
-        // so any cross-origin browser call is refused (SPEC §2.A).
+        // CORS: strict allowlist — empty (the composer is same-origin), so any
+        // cross-origin browser call is refused (SPEC §2.A).
         .layer(tower_http::cors::CorsLayer::new())
         .with_state(state)
 }

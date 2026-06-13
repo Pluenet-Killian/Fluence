@@ -330,6 +330,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/emergency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Raise or clear the emergency alert (double-confirmed; D-7.4) */
+        post: operations["post_system_emergency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/health": {
         parameters: {
             query?: never;
@@ -568,6 +585,19 @@ export interface components {
             caret: number;
             /** @description Current draft text. **P0 content** — never logged. */
             text: string;
+        };
+        /**
+         * @description `POST /system/emergency` — raise or clear the emergency alert (D-7.4).
+         *
+         *     Requires `control` scope (the user triggers it from the composer after a
+         *     double confirmation, SPEC §7.A). The hub broadcasts
+         *     [`SystemEvent::Emergency`] on the `system` topic and rings locally; the
+         *     resulting state reaches the caller through that broadcast, so the call
+         *     itself returns `204 No Content`.
+         */
+        EmergencyRequest: {
+            /** @description Desired state: `true` raises the alert, `false` clears it. */
+            active: boolean;
         };
         /**
          * @description Stable error codes (wire: `snake_case`).
@@ -1022,8 +1052,8 @@ export interface components {
          */
         SourceId: string;
         /**
-         * @description `POST /voice/speak` request. Response: streamed audio
-         *     (`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).
+         * @description `POST /voice/speak` request. Response: streamed audio (`audio/wav` in v0 —
+         *     ADR-0009), first sample < 200 ms (SPEC §5.A).
          */
         SpeakRequest: {
             /**
@@ -1208,6 +1238,16 @@ export interface components {
             enabled: boolean;
             /** @constant */
             k: "system.listening";
+        } | {
+            /** @description `true` raises the alert, `false` clears it. */
+            active: boolean;
+            /**
+             * Format: date-time
+             * @description When the state last changed (hub clock).
+             */
+            at: string;
+            /** @constant */
+            k: "system.emergency";
         };
         /** @description One selectable target (SPEC §4.A). */
         Target: {
@@ -2010,6 +2050,37 @@ export interface operations {
             };
         };
     };
+    post_system_emergency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmergencyRequest"];
+            };
+        };
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error (RFC 9457) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_system_health: {
         parameters: {
             query?: never;
@@ -2084,13 +2155,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Streamed audio */
+            /** @description Streamed audio (WAV, 16-bit mono PCM — ADR-0009; Opus/Ogg for LAN/home mode is deferred to Phase 7) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "audio/ogg": string;
+                    "audio/wav": string;
                 };
             };
             /** @description Error (RFC 9457) */

@@ -12,7 +12,9 @@ use chrono::{DateTime, Utc};
 use fluence_inference::{CancelToken, LlmBackend, UnavailableBackend};
 use fluence_ngram::NgramModel;
 use fluence_protocol::api::pair::Scope;
+use fluence_protocol::input::TargetMap;
 use fluence_store::{DraftWrite, Store};
+use fluence_voice::{UnavailableVoice, VoiceBackend};
 use secrecy::SecretString;
 use tokio::time::Instant;
 
@@ -172,6 +174,14 @@ struct Inner {
     suggest_slots: Mutex<HashMap<(String, String), (u64, CancelToken)>>,
     /// Monotonic source for suggestion-slot generations.
     suggest_generation: AtomicU64,
+    /// The active surface's full target map (`PUT /input/targets`). v0 holds a
+    /// single surface (the composer's main surface); a later PUT replaces it.
+    /// New `/ws` input connections seed their selection engine from it.
+    input_targets: Mutex<Option<TargetMap>>,
+    /// The voice backend `/voice/speak` calls. Defaults to
+    /// [`UnavailableVoice`]; production wires Piper with the OS voice as a
+    /// fallback (« une voix, toujours », SPEC §2.C).
+    voice: Arc<dyn VoiceBackend>,
 }
 
 /// Cheaply cloneable hub state.
@@ -190,6 +200,7 @@ impl AppState {
             bus,
             Arc::new(UnavailableBackend),
             Arc::new(NgramModel::new()),
+            Arc::new(UnavailableVoice),
         )
     }
 
@@ -203,6 +214,7 @@ impl AppState {
         bus: EventBus,
         engine: Arc<dyn LlmBackend>,
         fallback: Arc<NgramModel>,
+        voice: Arc<dyn VoiceBackend>,
     ) -> Self {
         Self(Arc::new(Inner {
             config,
@@ -221,6 +233,8 @@ impl AppState {
             fallback,
             suggest_slots: Mutex::new(HashMap::new()),
             suggest_generation: AtomicU64::new(0),
+            input_targets: Mutex::new(None),
+            voice,
         }))
     }
 
@@ -242,6 +256,19 @@ impl AppState {
         &self.0.bus
     }
 
+    /// Stores the active surface's full target map (`PUT /input/targets`).
+    /// v0 single-surface: a later PUT replaces it (SPEC §4.A, D-4.1).
+    pub fn set_input_targets(&self, map: TargetMap) {
+        *lock(&self.0.input_targets) = Some(map);
+    }
+
+    /// The current target map, cloned to seed a per-connection selection
+    /// engine (`None` until a UI has declared its targets).
+    #[must_use]
+    pub fn input_targets(&self) -> Option<TargetMap> {
+        lock(&self.0.input_targets).clone()
+    }
+
     /// The LLM backend the acceleration engine calls.
     #[must_use]
     pub fn engine(&self) -> &Arc<dyn LlmBackend> {
@@ -252,6 +279,12 @@ impl AppState {
     #[must_use]
     pub fn fallback(&self) -> &Arc<NgramModel> {
         &self.0.fallback
+    }
+
+    /// The voice backend `/voice/speak` calls (D-6.1).
+    #[must_use]
+    pub fn voice(&self) -> &Arc<dyn VoiceBackend> {
+        &self.0.voice
     }
 
     /// Registers a new suggestion on `(session, slot)`, cancelling any in-flight

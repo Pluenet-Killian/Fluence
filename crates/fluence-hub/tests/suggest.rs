@@ -49,7 +49,14 @@ async fn hub_with(
         store_key_file: Some(dir.path().join("store.key")),
         ..HubConfig::default()
     };
-    AppState::new_with(config, store, EventBus::new(), engine, Arc::new(fallback))
+    AppState::new_with(
+        config,
+        store,
+        EventBus::new(),
+        engine,
+        Arc::new(fallback),
+        Arc::new(fluence_voice::UnavailableVoice),
+    )
 }
 
 /// POSTs a rephrase request and returns the (status, parsed SSE events).

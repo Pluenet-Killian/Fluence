@@ -21,6 +21,7 @@ import random
 import unicodedata
 
 from fluence_data.azerty import sample_keypress
+from fluence_data.formats import InputVariant, VariantKind
 
 #: French function words dropped by the telegraphic generator (closed classes:
 #: articles, prepositions, pronouns, conjunctions, common auxiliaries).
@@ -218,3 +219,28 @@ def abbreviated(text: str) -> str:
         The abbreviated rendering.
     """
     return " ".join(_abbreviate_token(token) for token in text.split())
+
+
+def build_variants(text: str, rng: random.Random) -> list[InputVariant]:
+    """Generate the input variants of a user turn, keeping only useful ones.
+
+    A variant equal to the source (it added nothing) or empty (e.g. a
+    telegraphic turn of only function words) is dropped. Shared by the
+    hand-authored seed (:mod:`fluence_data.corpus_v0`) and the teacher-generated
+    tranche (:mod:`fluence_data.teacher`) so both render variants identically.
+
+    Args:
+        text: The intended user-turn text.
+        rng: Seeded RNG — the sole source of nondeterminism (``noised``).
+
+    Returns:
+        The useful input variants, in telegraphic / noised / abbreviated order.
+    """
+    candidates = (
+        (VariantKind.TELEGRAPHIC, telegraphic(text)),
+        (VariantKind.NOISED, noised(text, rng)),
+        (VariantKind.ABBREVIATED, abbreviated(text)),
+    )
+    return [
+        InputVariant(kind=kind, text=value) for kind, value in candidates if value and value != text
+    ]

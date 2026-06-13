@@ -22,6 +22,15 @@ heros = "heros"
 abord = "abord"
 # Bloc de contexte du moteur (§5.C) : « registre » de langue, pas « register ».
 registre = "registre"
+# Consigne anti-pathos du teacher et fichier de revue (§5.D) : prose FR.
+moteur = "moteur"
+exemple = "exemple"
+demandes = "demandes"
+symbole = "symbole"
+confirme = "confirme"
+# Chaînes FR de l'interface du composeur web (§7.A).
+appareil = "appareil"
+Espace = "Espace"
 
 [files]
 extend-exclude = [
@@ -33,4 +42,11 @@ extend-exclude = [
     "*.yml",
     "*.yaml",
     "*.lock",
+    # Curated French vocabulary data (the n-gram fallback base): a word list,
+    # not English code or prose — the English typo dictionary only yields false
+    # positives here (toi, celle, sais, chambre, fils…).
+    "crates/fluence-ngram/data/",
+    # Corpus data (§5.D): French dialogues plus *deliberately* corrupted
+    # noised/abbreviated variants — not code, and not to be spell-checked.
+    "ml/data/corpus/",
 ]

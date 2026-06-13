@@ -50,6 +50,22 @@ pub struct HubConfig {
     pub llama_model_path: Option<PathBuf>,
     /// Context window passed to `llama-server` (`-c`).
     pub llama_context_size: u32,
+    /// GPU layers to offload (`-ngl`). Default 0 (CPU only — the reduced tier
+    /// FLU-REF-1 has no GPU). Set high (e.g. 99) to offload all layers on a GPU
+    /// build of `llama-server`; E4B is far faster offloaded (SPEC §3 GPU tier).
+    pub llama_gpu_layers: u32,
+    /// Path to the `piper` binary (TTS, D-6.1). With [`Self::piper_voice`] set,
+    /// the hub serves `/voice/speak` with Piper; otherwise the OS voice is used
+    /// (« une voix, toujours », SPEC §2.C).
+    pub piper_command: Option<PathBuf>,
+    /// Path to the Piper ONNX voice model.
+    pub piper_voice: Option<PathBuf>,
+    /// Voice id advertised for the configured Piper voice.
+    pub piper_voice_id: String,
+    /// Directory of the built web composer to serve as a same-origin PWA
+    /// (PLAN 5.3). When set, the hub serves it as a fallback under `/`, after
+    /// the API routes, with an SPA fallback to `index.html`.
+    pub web_dir: Option<PathBuf>,
 }
 
 impl Default for HubConfig {
@@ -64,6 +80,11 @@ impl Default for HubConfig {
             llama_server_command: None,
             llama_model_path: None,
             llama_context_size: DEFAULT_LLAMA_CONTEXT,
+            llama_gpu_layers: 0,
+            piper_command: None,
+            piper_voice: None,
+            piper_voice_id: "piper:fr_FR-siwis-medium".to_owned(),
+            web_dir: None,
         }
     }
 }
@@ -175,6 +196,25 @@ impl HubConfig {
                 value,
                 reason: format!("{e}"),
             })?;
+        }
+        if let Some(value) = lookup("FLUENCE_LLAMA_GPU_LAYERS") {
+            self.llama_gpu_layers = value.parse().map_err(|e| ConfigError::InvalidEnv {
+                name: "FLUENCE_LLAMA_GPU_LAYERS",
+                value,
+                reason: format!("{e}"),
+            })?;
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_BIN") {
+            self.piper_command = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_VOICE") {
+            self.piper_voice = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_VOICE_ID") {
+            self.piper_voice_id = value;
+        }
+        if let Some(value) = lookup("FLUENCE_WEB_DIR") {
+            self.web_dir = Some(PathBuf::from(value));
         }
         Ok(())
     }

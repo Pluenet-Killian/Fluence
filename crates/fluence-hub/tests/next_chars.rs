@@ -49,7 +49,14 @@ async fn hub_with(
         store_key_file: Some(dir.path().join("store.key")),
         ..HubConfig::default()
     };
-    AppState::new_with(config, store, EventBus::new(), engine, Arc::new(fallback))
+    AppState::new_with(
+        config,
+        store,
+        EventBus::new(),
+        engine,
+        Arc::new(fallback),
+        Arc::new(fluence_voice::UnavailableVoice),
+    )
 }
 
 async fn next_chars(state: AppState, prefix: &str) -> (StatusCode, NextCharsResponse) {
@@ -104,12 +111,36 @@ async fn next_chars_degrades_to_ngram_when_backend_unavailable() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn next_chars_is_never_5xx_even_with_an_empty_fallback() {
-    // The default production state (no worker, empty fallback): the endpoint
-    // still answers 200 with an empty distribution — the keyboard never breaks.
+    // An empty fallback (the bare default, before any vocabulary is loaded):
+    // the endpoint still answers 200 with an empty distribution — the keyboard
+    // never breaks, even in the degenerate case.
     let dir = tempfile::tempdir().expect("tempdir");
     let state = hub_with(Arc::new(UnavailableBackend), NgramModel::new(), &dir).await;
     let (status, response) = next_chars(state, "xyz").await;
 
     assert_eq!(status, StatusCode::OK);
     assert!(response.dist.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn next_chars_degraded_french_base_predicts_common_prefixes() {
+    // The production fallback (NgramModel::french_base, wired in `start`) must
+    // make degradation *useful*, not empty: with the LLM down, a common French
+    // prefix still yields a distribution to drive prediction / adaptive dwell
+    // (D-2.6). This is the gap PR-0b closes — the hub used to load an empty
+    // n-gram, so the degraded keyboard predicted nothing.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let state = hub_with(
+        Arc::new(UnavailableBackend),
+        NgramModel::french_base(),
+        &dir,
+    )
+    .await;
+    let (status, response) = next_chars(state, "po").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !response.dist.is_empty(),
+        "the French base must predict after a common prefix, got an empty distribution"
+    );
 }

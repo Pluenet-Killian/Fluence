@@ -25,6 +25,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
+use std::time::Duration;
 
 use fluence_protocol::Normalized;
 use fluence_protocol::api::suggest::CharProb;
@@ -44,6 +45,41 @@ const NEXT_CHARS_SPREAD: usize = 6;
 const NEXT_CHARS_MIN_PROBS: usize = 24;
 const NEXT_CHARS_MAX_PROBS: usize = 100;
 
+/// HTTP timeouts for the [`LlamaServerBackend`] client.
+///
+/// Defaults are production safety ceilings (not latency targets — the §5.A
+/// budgets are measured elsewhere); the point is to fail *eventually* rather
+/// than hang forever, so the hub can degrade to the n-gram fallback (D-2.6).
+/// `connect` and `recv_response` are applied at the agent level: together they
+/// bound the dangerous case of a server that accepts the socket but never sends
+/// a response, **without** capping a long streaming body (`generate` may
+/// legitimately stream for many seconds — a mid-stream wedge is caught by the
+/// supervisor's liveness probe instead). `unary_body` additionally caps the body
+/// of the non-streaming `next_chars` probe; `health` bounds each `GET /health`
+/// so a wedged server is detected within a few supervisor probe cycles.
+#[derive(Debug, Clone, Copy)]
+pub struct BackendTimeouts {
+    /// Establishing the TCP connection (loopback connect is instant when up).
+    pub connect: Duration,
+    /// Receiving the response status and headers, but not the body.
+    pub recv_response: Duration,
+    /// Receiving the full body of a unary (non-streaming) call.
+    pub unary_body: Duration,
+    /// A whole `GET /health` call (readiness gate and liveness probe).
+    pub health: Duration,
+}
+
+impl Default for BackendTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(5),
+            recv_response: Duration::from_secs(30),
+            unary_body: Duration::from_secs(30),
+            health: Duration::from_secs(3),
+        }
+    }
+}
+
 /// The local llama.cpp backend, speaking HTTP to a `llama-server` subprocess.
 ///
 /// Construct one with [`LlamaServerBackend::new`] pointing at the server's base
@@ -55,20 +91,51 @@ pub struct LlamaServerBackend {
     completion_url: String,
     /// Fully-qualified `…/health` endpoint, computed once.
     health_url: String,
-    /// Connection-pooling HTTP agent (keep-alive → warm KV reuse).
+    /// Fully-qualified `…/v1/chat/completions` endpoint, computed once.
+    chat_url: String,
+    /// Connection-pooling HTTP agent (keep-alive → warm KV reuse). Carries the
+    /// agent-level `connect`/`recv_response` timeouts.
     agent: ureq::Agent,
+    /// Timeouts; the per-request ones (`unary_body`, `health`) are applied at
+    /// the call sites.
+    timeouts: BackendTimeouts,
+}
+
+/// Whether a `/completion` call streams (long-lived) or is a single unary probe.
+#[derive(Debug, Clone, Copy)]
+enum CallMode {
+    /// Streaming generation: no body timeout (it runs for the whole completion).
+    Streaming,
+    /// A single non-streaming response: the body is additionally time-bounded.
+    Unary,
 }
 
 impl LlamaServerBackend {
     /// A backend talking to the `llama-server` reachable at `base_url`
-    /// (scheme + host + port, with or without a trailing slash).
+    /// (scheme + host + port, with or without a trailing slash), with the
+    /// default production [`BackendTimeouts`].
     #[must_use]
     pub fn new(base_url: &str) -> Self {
+        Self::new_with_timeouts(base_url, BackendTimeouts::default())
+    }
+
+    /// As [`new`](Self::new) but with explicit timeouts — tests use short ones
+    /// to exercise the timeout paths in milliseconds.
+    #[must_use]
+    pub fn new_with_timeouts(base_url: &str, timeouts: BackendTimeouts) -> Self {
         let base = base_url.trim_end_matches('/');
+        let agent = ureq::Agent::new_with_config(
+            ureq::Agent::config_builder()
+                .timeout_connect(Some(timeouts.connect))
+                .timeout_recv_response(Some(timeouts.recv_response))
+                .build(),
+        );
         Self {
             completion_url: format!("{base}/completion"),
             health_url: format!("{base}/health"),
-            agent: ureq::Agent::new_with_defaults(),
+            chat_url: format!("{base}/v1/chat/completions"),
+            agent,
+            timeouts,
         }
     }
 
@@ -80,22 +147,40 @@ impl LlamaServerBackend {
     /// polls this to gate readiness before routing traffic to the backend.
     #[must_use]
     pub fn is_healthy(&self) -> bool {
-        self.agent.get(&self.health_url).call().is_ok()
+        self.agent
+            .get(&self.health_url)
+            .config()
+            .timeout_global(Some(self.timeouts.health))
+            .build()
+            .call()
+            .is_ok()
     }
 
-    /// POSTs `body` to `/completion` and returns the response body reader.
+    /// POSTs `body` to `url` and returns the response body reader.
     ///
     /// `ureq` treats a non-2xx status as an error by default, so a server that
-    /// is up but refusing the request surfaces here as [`BackendError`].
-    fn open_completion(&self, body: &Value) -> Result<impl Read, BackendError> {
-        let response = self
+    /// is up but refusing the request surfaces here as [`BackendError`]. The
+    /// agent-level `connect`/`recv_response` timeouts bound a server that
+    /// accepts the socket but never replies; a [`CallMode::Unary`] call also
+    /// caps the body so a stalled non-streaming probe cannot hang.
+    fn open(&self, url: &str, body: &Value, mode: CallMode) -> Result<impl Read, BackendError> {
+        let request = self
             .agent
-            .post(&self.completion_url)
-            .header("content-type", "application/json")
-            .send(body.to_string())
-            .map_err(|err| {
-                BackendError::Unavailable(format!("llama-server request failed: {err}"))
-            })?;
+            .post(url)
+            .header("content-type", "application/json");
+        let request = match mode {
+            // A streaming generation runs for the whole completion, so it must
+            // not carry a body timeout — only connect/recv-response apply, and a
+            // mid-stream wedge is caught by the supervisor's liveness probe.
+            CallMode::Streaming => request,
+            CallMode::Unary => request
+                .config()
+                .timeout_recv_body(Some(self.timeouts.unary_body))
+                .build(),
+        };
+        let response = request.send(body.to_string()).map_err(|err| {
+            BackendError::Unavailable(format!("llama-server request failed: {err}"))
+        })?;
         Ok(response.into_body().into_reader())
     }
 }
@@ -117,14 +202,8 @@ impl LlmBackend for LlamaServerBackend {
         cancel: &CancelToken,
         sink: &mut dyn FnMut(&str),
     ) -> Result<GenerateOutcome, BackendError> {
-        let body = json!({
-            "prompt": request.prompt,
-            "n_predict": request.max_tokens,
-            "temperature": GENERATE_TEMPERATURE,
-            "cache_prompt": true,
-            "stream": true,
-        });
-        let reader = BufReader::new(self.open_completion(&body)?);
+        let body = generate_body(request);
+        let reader = BufReader::new(self.open(&self.chat_url, &body, CallMode::Streaming)?);
 
         for line in reader.lines() {
             // Cooperative cancellation between frames: a newer request on the
@@ -137,17 +216,28 @@ impl LlmBackend for LlamaServerBackend {
                 BackendError::Unavailable(format!("reading llama-server stream: {err}"))
             })?;
             let Some(payload) = sse_payload(&line) else {
-                continue; // blank separators and `event:` lines
+                continue; // blank separators and comments
             };
+            if payload == "[DONE]" {
+                return Ok(GenerateOutcome::Completed);
+            }
             let chunk: Value = serde_json::from_str(payload).map_err(|err| {
                 BackendError::Unavailable(format!("parsing llama-server frame: {err}"))
             })?;
-            if let Some(content) = chunk.get("content").and_then(Value::as_str)
+            // OpenAI chat streaming: `choices[0].delta.content` (a role-only
+            // opening delta carries no content and is skipped).
+            if let Some(content) = chunk
+                .pointer("/choices/0/delta/content")
+                .and_then(Value::as_str)
                 && !content.is_empty()
             {
                 sink(content);
             }
-            if chunk.get("stop").and_then(Value::as_bool) == Some(true) {
+            if chunk
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                .is_some()
+            {
                 return Ok(GenerateOutcome::Completed);
             }
         }
@@ -168,7 +258,7 @@ impl LlmBackend for LlamaServerBackend {
         });
 
         let mut raw = String::new();
-        self.open_completion(&body)?
+        self.open(&self.completion_url, &body, CallMode::Unary)?
             .read_to_string(&mut raw)
             .map_err(|err| {
                 BackendError::Unavailable(format!("reading llama-server response: {err}"))
@@ -196,7 +286,34 @@ impl LlmBackend for LlamaServerBackend {
 
 /// Folds raw token log-probabilities into a next-character distribution: sum the
 /// probability mass of every candidate token sharing a first character, keep the
+/// Builds the chat-completions request body for [`LlamaServerBackend::generate`].
+///
+/// The chat-completions endpoint makes `llama-server` apply the model's chat
+/// template (Gemma, Qwen, …): an instruction-tuned model needs its template to
+/// act as an instructor, not a free-form continuer — without it it rambles and
+/// echoes the prompt (#31). The assembled prompt (`fluence-accel`) becomes the
+/// user message, so the prompt stays model-agnostic.
+///
+/// Thinking is disabled (`enable_thinking=false`): a reasoning model (Gemma E4B)
+/// would otherwise spend the whole token budget in a hidden `thought` channel
+/// and stream little or no answer. It is a harmless no-op for models without a
+/// thinking template.
+fn generate_body(request: &GenerateRequest) -> Value {
+    json!({
+        "messages": [{ "role": "user", "content": request.prompt }],
+        "max_tokens": request.max_tokens,
+        "temperature": GENERATE_TEMPERATURE,
+        "stream": true,
+        "chat_template_kwargs": { "enable_thinking": false },
+    })
+}
+
 /// `top_k` heaviest characters, and renormalise so the result sums to 1.
+///
+/// Robust to a misbehaving server: candidates whose probability is not finite (a
+/// malformed or overflowing `logprob`, e.g. `exp(1000) = +inf`) are dropped, and
+/// a non-finite total yields an empty distribution — never a NaN that would
+/// panic [`Normalized::new`].
 fn aggregate_by_first_char(candidates: &[Value], top_k: usize) -> Vec<CharProb> {
     let mut mass: HashMap<char, f64> = HashMap::new();
     for entry in candidates {
@@ -212,7 +329,13 @@ fn aggregate_by_first_char(candidates: &[Value], top_k: usize) -> Vec<CharProb> 
         if ch == char::REPLACEMENT_CHARACTER {
             continue; // a partial byte-fallback token, not a real character
         }
-        *mass.entry(ch).or_insert(0.0) += logprob.exp();
+        let probability = logprob.exp();
+        if !probability.is_finite() {
+            // A malformed or huge `logprob` overflowed `exp()` to ±inf. Drop it
+            // rather than let a non-finite mass poison the sum into a NaN.
+            continue;
+        }
+        *mass.entry(ch).or_insert(0.0) += probability;
     }
 
     let mut ranked: Vec<(char, f64)> = mass.into_iter().collect();
@@ -221,7 +344,10 @@ fn aggregate_by_first_char(candidates: &[Value], top_k: usize) -> Vec<CharProb> 
     ranked.truncate(top_k);
 
     let total: f64 = ranked.iter().map(|&(_, p)| p).sum();
-    if total <= 0.0 {
+    // A non-finite or non-positive total has no usable distribution. The
+    // `is_finite` check also catches a sum that overflowed to +inf, which a bare
+    // `<= 0.0` comparison silently misses (any comparison with NaN/inf is false).
+    if !total.is_finite() || total <= 0.0 {
         return Vec::new();
     }
     ranked
@@ -304,11 +430,26 @@ mod tests {
     }
 
     #[test]
+    fn generate_body_uses_chat_template_and_disables_thinking() {
+        let request = GenerateRequest {
+            prompt: "veu eau frache".to_owned(),
+            max_tokens: 32,
+        };
+        let body = generate_body(&request);
+        // Chat-completions shape (template applied by the server) …
+        assert_eq!(body["messages"][0]["role"], "user");
+        assert_eq!(body["messages"][0]["content"], "veu eau frache");
+        assert_eq!(body["stream"], true);
+        // … and thinking off, so a reasoning model answers instead of musing.
+        assert_eq!(body["chat_template_kwargs"]["enable_thinking"], false);
+    }
+
+    #[test]
     fn generate_streams_content_deltas_until_stop() {
         let sse = concat!(
-            "data: {\"content\":\"Je \"}\n\n",
-            "data: {\"content\":\"voudrais\"}\n\n",
-            "data: {\"content\":\"\",\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Je \"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"voudrais\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let (text, outcome) = collect(&backend, &CancelToken::new());
@@ -318,11 +459,12 @@ mod tests {
 
     #[test]
     fn generate_tolerates_dataless_frames() {
-        // `event:` lines and blank separators must be ignored, not parsed.
+        // A role-only opening delta and blank separators carry no content and
+        // must be skipped, not break parsing.
         let sse = concat!(
-            "event: message\n",
-            "data: {\"content\":\"ok\"}\n\n",
-            "data: {\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let (text, outcome) = collect(&backend, &CancelToken::new());
@@ -333,9 +475,9 @@ mod tests {
     #[test]
     fn generate_stops_when_cancelled() {
         let sse = concat!(
-            "data: {\"content\":\"un\"}\n\n",
-            "data: {\"content\":\"deux\"}\n\n",
-            "data: {\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"un\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"deux\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let cancel = CancelToken::new();
@@ -413,6 +555,31 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn next_chars_survives_a_non_finite_logprob() {
+        // A buggy or hostile server can send a `logprob` so large that `exp()`
+        // overflows to +inf. The aggregation must never panic — it used to:
+        // inf/inf = NaN, and `Normalized::new(NaN)` is the `Err` the code
+        // `expect`ed away. The non-finite mass is dropped; finite candidates
+        // still yield a valid distribution.
+        let json = r#"{"completion_probabilities":[{"token":"a","top_logprobs":[
+            {"token":"a","logprob":1000.0},
+            {"token":"b","logprob":-0.5}
+        ]}]}"#;
+        let backend = LlamaServerBackend::new(&mock_server("application/json", json));
+        let dist = backend
+            .next_chars("x", 4)
+            .expect("a finite candidate remains");
+        assert!(
+            dist.iter().all(|c| c.p.get().is_finite()),
+            "every probability must be finite"
+        );
+        assert!(
+            dist.iter().all(|c| c.ch != 'a'),
+            "the overflowing candidate is dropped, not ranked"
+        );
+    }
+
     /// Live smoke test against a running `llama-server`. Set
     /// `FLUENCE_LLAMA_SERVER_URL` (e.g. `http://127.0.0.1:8089`) and run with
     /// `cargo test -p fluence-inference -- --ignored`; without the variable it
@@ -475,5 +642,81 @@ mod tests {
             ),
             Err(BackendError::Unavailable(_))
         ));
+    }
+
+    /// A server that accepts the connection then never replies, holding the
+    /// socket open — the "up but wedged" case the timeouts must survive. The
+    /// listener thread lingers briefly, longer than the tests' short timeout.
+    fn wedged_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        thread::spawn(move || {
+            if let Ok((stream, _)) = listener.accept() {
+                thread::sleep(Duration::from_secs(3));
+                drop(stream);
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// Short timeouts so the wedged-server paths resolve in milliseconds.
+    fn fast_timeouts() -> BackendTimeouts {
+        BackendTimeouts {
+            connect: Duration::from_secs(1),
+            recv_response: Duration::from_millis(200),
+            unary_body: Duration::from_millis(200),
+            health: Duration::from_millis(200),
+        }
+    }
+
+    #[test]
+    fn generate_times_out_when_the_server_never_replies() {
+        // Without a response timeout this call would hang forever, stalling
+        // `/suggest`; the timeout turns it into a prompt Unavailable so the hub
+        // degrades to the n-gram fallback (D-2.6 « le clavier parle toujours »).
+        let backend = LlamaServerBackend::new_with_timeouts(&wedged_server(), fast_timeouts());
+        let start = std::time::Instant::now();
+        let result = backend.generate(
+            &GenerateRequest {
+                prompt: "x".to_owned(),
+                max_tokens: 8,
+            },
+            &CancelToken::new(),
+            &mut |_| {},
+        );
+        assert!(
+            matches!(result, Err(BackendError::Unavailable(_))),
+            "a wedged server must surface as Unavailable"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "must time out promptly, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn next_chars_times_out_when_the_server_never_replies() {
+        let backend = LlamaServerBackend::new_with_timeouts(&wedged_server(), fast_timeouts());
+        let start = std::time::Instant::now();
+        let result = backend.next_chars("x", 4);
+        assert!(matches!(result, Err(BackendError::Unavailable(_))));
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "must time out promptly, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn is_healthy_is_false_when_the_server_never_replies() {
+        let backend = LlamaServerBackend::new_with_timeouts(&wedged_server(), fast_timeouts());
+        let start = std::time::Instant::now();
+        assert!(!backend.is_healthy(), "a wedged server is not healthy");
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "health probe must fail promptly, took {:?}",
+            start.elapsed()
+        );
     }
 }

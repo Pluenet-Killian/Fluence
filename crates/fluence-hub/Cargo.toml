@@ -18,10 +18,12 @@ chrono = { version = "0.4.45", default-features = false, features = ["serde", "c
 directories = "6.0.0"
 fluence-accel = { version = "0.0.0", path = "../fluence-accel" }
 fluence-inference = { version = "0.0.0", path = "../fluence-inference" }
+fluence-input = { version = "0.0.0", path = "../fluence-input" }
 fluence-ipc = { version = "0.0.0", path = "../fluence-ipc" }
 fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
 fluence-store = { version = "0.0.0", path = "../fluence-store" }
+fluence-voice = { version = "0.0.0", path = "../fluence-voice" }
 rand = "0.10.1"
 secrecy = "0.10.3"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -33,7 +35,7 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "signal",
 tokio-stream = "0.1.17"
 toml = "1.1.2"
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["cors"] }
+tower-http = { version = "0.6.11", features = ["cors", "fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "json"] }
 uuid = { version = "1.23.3", features = ["v4"] }

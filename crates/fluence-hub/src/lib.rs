@@ -29,6 +29,7 @@ use fluence_inference::{LlmBackend, UnavailableBackend};
 use fluence_ngram::NgramModel;
 use fluence_protocol::api::system::WorkerKind;
 use fluence_store::{KeySource, Store, StoreConfig};
+use fluence_voice::{FallbackVoice, PiperBackend, SystemVoiceBackend, VoiceBackend};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
@@ -122,7 +123,20 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
         Some((engine, _, _)) => engine.clone(),
         None => Arc::new(UnavailableBackend),
     };
-    let state = AppState::new_with(config, store, bus, engine, Arc::new(NgramModel::new()));
+    // The always-loaded French base n-gram (D-2.6): when the LLM is down the
+    // keyboard still predicts from this, never an empty fallback.
+    // The voice: Piper when configured, with the OS voice always behind it so
+    // vocalising never depends on the neural TTS being up (« une voix,
+    // toujours », SPEC §2.C). Both built before `config` moves into the state.
+    let voice = build_voice(&config);
+    let state = AppState::new_with(
+        config,
+        store,
+        bus,
+        engine,
+        Arc::new(NgramModel::french_base()),
+        voice,
+    );
     state.spawn_draft_flusher();
     state.spawn_draft_purger();
 
@@ -311,8 +325,35 @@ fn build_llama_engine(config: &HubConfig) -> Result<Option<LlamaEngine>, HubErro
         model,
         port,
         context_size: config.llama_context_size,
+        gpu_layers: config.llama_gpu_layers,
     };
     Ok(Some((backend, spec, ready)))
+}
+
+/// Builds the voice backend: the configured Piper voice (if its binary and
+/// model are present) layered over the always-available OS voice, so
+/// vocalising never depends on the neural TTS being up (« une voix, toujours »,
+/// SPEC §2.C, D-6.1). A misconfigured Piper logs and degrades to the OS voice
+/// rather than failing the hub.
+fn build_voice(config: &HubConfig) -> Arc<dyn VoiceBackend> {
+    let system: Arc<dyn VoiceBackend> = Arc::new(SystemVoiceBackend::new());
+    let piper: Option<Arc<dyn VoiceBackend>> = match (&config.piper_command, &config.piper_voice) {
+        (Some(command), Some(model)) => {
+            match PiperBackend::new(
+                command.clone(),
+                model.clone(),
+                config.piper_voice_id.clone(),
+            ) {
+                Ok(backend) => Some(Arc::new(backend)),
+                Err(error) => {
+                    tracing::warn!(%error, "piper voice unavailable; using the OS voice only");
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+    Arc::new(FallbackVoice::new(piper, system))
 }
 
 /// Reserves a free loopback port by binding `:0`, reading the assigned port,

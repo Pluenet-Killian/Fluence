@@ -66,7 +66,7 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "`POST /voice/speak` request. Response: streamed audio\n(`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).",
+  "description": "`POST /voice/speak` request. Response: streamed audio (`audio/wav` in v0 —\nADR-0009), first sample < 200 ms (SPEC §5.A).",
   "properties": {
     "prosody": {
       "anyOf": [

@@ -107,6 +107,7 @@ fn spawn_hub(data_dir: &Path, pidfile: &Path, die_marker: &Path) -> Hub {
         .env("FLUENCE_LLAMA_MODEL", fake)
         .env("FLUENCE_FAKE_LLAMA_PIDFILE", pidfile)
         .env("FLUENCE_FAKE_LLAMA_DIE_IF_EXISTS", die_marker)
+        .env("FLUENCE_FAKE_LLAMA_WEDGE_IF_EXISTS", data_dir.join("wedge"))
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -252,5 +253,55 @@ fn suggest_uses_the_model_then_degrades_when_llama_dies() {
             "the engine never degraded after llama-server died"
         );
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn a_wedged_but_alive_llama_is_detected_and_degrades() {
+    // Unlike the crash test above, the fake server stays ALIVE here — we never
+    // kill it — but stops answering /health. Only the supervisor's liveness
+    // probe can notice this (a dead-process watch never fires for a live
+    // process), restart it, and so degrade /suggest to the n-gram fallback
+    // (D-2.6 « le clavier parle toujours »).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pidfile = dir.path().join("fake.pid");
+    let die_marker = dir.path().join("die");
+    let wedge_marker = dir.path().join("wedge");
+    let hub = spawn_hub(dir.path(), &pidfile, &die_marker);
+
+    wait_for_llm_ready(&hub, Duration::from_secs(15));
+    let control = hub.pair_control_token();
+
+    // Healthy first: a model-origin suggestion proves the engine is live.
+    let (status, events) = suggest(&hub, &control, "veu eau frache");
+    assert_eq!(status, 200);
+    assert!(
+        final_payload(&events)["suggestions"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|s| s["origin"] == "model")),
+        "a healthy llama-server must produce model-origin suggestions"
+    );
+
+    // Wedge /health while the process stays alive. Also make any respawn exit,
+    // so once the probe restarts the worker the engine stays down — proving the
+    // probe, not a crash, caught it.
+    std::fs::write(&die_marker, b"die").expect("write die marker");
+    std::fs::write(&wedge_marker, b"wedge").expect("write wedge marker");
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let (status, events) = suggest(&hub, &control, "veu eau frache");
+        assert_eq!(status, 200, "degradation must never be a 5xx (D-2.6)");
+        let degraded = !final_payload(&events)["suggestions"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|s| s["origin"] == "model"));
+        if degraded {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the liveness probe never detected the wedged (but alive) server"
+        );
+        std::thread::sleep(Duration::from_millis(200));
     }
 }

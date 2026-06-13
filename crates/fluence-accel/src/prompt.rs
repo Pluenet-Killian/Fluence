@@ -113,7 +113,11 @@ fn system_block(
     );
     match mode {
         SuggestMode::Rephrase => {
-            block.push_str(" Reformule le brouillon en tolérant les fautes de frappe.");
+            block.push_str(
+                " Reformule le brouillon en une seule phrase, en corrigeant les \
+                 fautes de frappe. Réponds uniquement par la phrase corrigée, \
+                 sans guillemets ni explication.",
+            );
         }
         SuggestMode::Continue => block.push_str(" Continue le brouillon dans le même élan."),
         SuggestMode::Replies => block.push_str(" Propose une réponse brève à l'interlocuteur."),
@@ -227,7 +231,9 @@ mod tests {
         let expected = "Tu es l'assistant de communication de la personne. Tu écris en \
              français, dans son style, une phrase claire et naturelle. Tu ne \
              parles pas à sa place : tu proposes, elle décide. Reformule le \
-             brouillon en tolérant les fautes de frappe. Registre : famille.\n\n\
+             brouillon en une seule phrase, en corrigeant les fautes de frappe. \
+             Réponds uniquement par la phrase corrigée, sans guillemets ni \
+             explication. Registre : famille.\n\n\
              Interlocuteur (il y a 2 min) : Tu veux quoi pour le dîner ?\n\n\
              Brouillon à reformuler : « veu eau frache ce soir »";
         assert_eq!(prompt.text, expected);

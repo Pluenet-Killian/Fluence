@@ -9,18 +9,23 @@
 //! with the outcome. Heartbeat: protocol-level ping every 5 s.
 
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::Response;
+use fluence_input::{DwellConfig, SelectionEngine, SelectionUpdate};
+use fluence_protocol::Normalized;
 use fluence_protocol::api::pair::Scope;
 use fluence_protocol::api::system::SystemEvent;
-use fluence_protocol::ws::{ServerFrame, Topic};
+use fluence_protocol::common::TimestampMicros;
+use fluence_protocol::input::{InputClientMessage, SelectionEvent};
+use fluence_protocol::ws::{ClientFrame, ServerFrame, Topic};
 use serde::Deserialize;
 
 use crate::api::problem_response;
 use crate::auth::token_hash;
+use crate::events::EventBus;
 use crate::state::AppState;
 
 /// Heartbeat period (SPEC §2.A: 5 s).
@@ -148,6 +153,19 @@ async fn serve(
     let mut ping = tokio::time::interval(PING_PERIOD);
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
+    // A connection that subscribed to `input` (control/system scope) runs a
+    // per-connection selection engine (SPEC §4.A, D-4.1), seeded from the
+    // surface's declared targets. Its monotonic clock starts now, so dwell
+    // accumulation replays deterministically (the lib is clock-free, PLAN 5.1).
+    let started = Instant::now();
+    let mut engine = granted.contains(&Topic::Input).then(|| {
+        let mut engine = SelectionEngine::new(DwellConfig::default());
+        if let Some(map) = state.input_targets() {
+            let _ = engine.set_targets(&map);
+        }
+        engine
+    });
+
     loop {
         tokio::select! {
             received = bus.recv() => {
@@ -177,11 +195,23 @@ async fn serve(
             }
             incoming = socket.recv() => {
                 match incoming {
-                    // Client input frames are a Phase 5 concern (remote
-                    // sensors); accepted and dropped with a debug trace
-                    // until the input engine lands.
-                    Some(Ok(Message::Text(_))) => {
-                        tracing::debug!("client frame ignored (input engine arrives Phase 5)");
+                    // Client input frames (remote sensors / target patches):
+                    // drive this connection's selection engine and publish the
+                    // resulting events. A connection without the `input` topic
+                    // has no engine, so its text frames are ignored.
+                    Some(Ok(Message::Text(text))) => {
+                        if let Some(engine) = engine.as_mut() {
+                            match serde_json::from_str::<ClientFrame>(&text) {
+                                Ok(ClientFrame::Input(message)) => {
+                                    relay_input(engine, &message, started.elapsed(), state.bus());
+                                }
+                                Err(error) => {
+                                    // A malformed frame is the client's bug:
+                                    // trace (no P0 in the error) and stay up.
+                                    tracing::debug!(%error, "unparsable client input frame ignored");
+                                }
+                            }
+                        }
                     }
                     Some(Ok(Message::Close(_))) | None => return,
                     Some(Ok(_)) => {} // pongs, binary: nothing to do yet
@@ -215,6 +245,51 @@ async fn send_frame(socket: &mut WebSocket, frame: &ServerFrame) -> Result<(), a
     socket.send(Message::Text(json.into())).await
 }
 
+/// Drives the per-connection selection engine with one client message and
+/// publishes the resulting selection events (stamped with the hub clock) on the
+/// bus, where every `input`-topic subscriber — the composer and any partner
+/// screen — receives them (SPEC §4.A).
+fn relay_input(
+    engine: &mut SelectionEngine,
+    message: &InputClientMessage,
+    now: Duration,
+    bus: &EventBus,
+) {
+    let updates = match message {
+        InputClientMessage::Pointer(sample) => {
+            engine.on_pointer(sample.x.get(), sample.y.get(), now)
+        }
+        InputClientMessage::Switch(_) => engine.on_switch(now),
+        InputClientMessage::TargetsPatch(patch) => engine.apply_patch(patch),
+    };
+    for update in updates {
+        bus.publish(ServerFrame::Input(stamp(update, now)));
+    }
+}
+
+/// Stamps a clock-free [`SelectionUpdate`] into the wire [`SelectionEvent`]:
+/// the engine decides, the hub dates (SPEC §4.A). `now` is the connection's
+/// monotonic elapsed time, used both as the event timestamp and (by the engine)
+/// for dwell accumulation, so a replay is deterministic.
+fn stamp(update: SelectionUpdate, now: Duration) -> SelectionEvent {
+    let t = TimestampMicros(u64::try_from(now.as_micros()).unwrap_or(u64::MAX));
+    match update {
+        SelectionUpdate::Focus { target } => SelectionEvent::Focus { target, t },
+        SelectionUpdate::Dwell {
+            target,
+            progress,
+            eta,
+        } => SelectionEvent::Dwell {
+            target,
+            progress: Normalized::new(progress.clamp(0.0, 1.0))
+                .expect("a clamped [0, 1] value is a valid Normalized"),
+            eta_ms: u32::try_from(eta.as_millis()).unwrap_or(u32::MAX),
+        },
+        SelectionUpdate::Commit { target, method } => SelectionEvent::Commit { target, method, t },
+        SelectionUpdate::Cancel => SelectionEvent::Cancel,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +306,91 @@ mod tests {
     fn unknown_topic_names_are_ignored() {
         let parsed = parse_topics("input,brain-waves,system");
         assert_eq!(parsed, vec![Topic::Input, Topic::System]);
+    }
+
+    use fluence_protocol::input::{PointerSample, Target, TargetMap, TargetRole, Viewport};
+
+    fn full_surface() -> TargetMap {
+        TargetMap {
+            surface: "main".into(),
+            viewport: Viewport { w: 100, h: 100 },
+            targets: vec![Target {
+                id: "key_e".into(),
+                rect: serde_json::from_str("[0, 0, 100, 100]").expect("valid rect"),
+                role: TargetRole::Key,
+                label: Some("e".to_owned()),
+                prior: None,
+            }],
+        }
+    }
+
+    fn pointer_at(x: f64, y: f64) -> InputClientMessage {
+        InputClientMessage::Pointer(PointerSample {
+            t: TimestampMicros(0),
+            src: "mouse:test".into(),
+            x: Normalized::new(x).expect("in range"),
+            y: Normalized::new(y).expect("in range"),
+            conf: Normalized::new(1.0).expect("in range"),
+            pose: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn a_sustained_dwell_publishes_a_commit_on_the_bus() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        let mut engine = SelectionEngine::new(DwellConfig::default());
+        let _ = engine.set_targets(&full_surface());
+
+        // First sample establishes focus; a second past the base dwell commits.
+        relay_input(&mut engine, &pointer_at(0.5, 0.5), Duration::ZERO, &bus);
+        relay_input(
+            &mut engine,
+            &pointer_at(0.5, 0.5),
+            Duration::from_millis(900),
+            &bus,
+        );
+
+        let mut committed = false;
+        while let Ok(frame) = receiver.try_recv() {
+            if matches!(frame, ServerFrame::Input(SelectionEvent::Commit { .. })) {
+                committed = true;
+            }
+        }
+        assert!(committed, "a sustained dwell must publish a commit event");
+    }
+
+    #[tokio::test]
+    async fn a_connection_without_targets_publishes_nothing() {
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        let mut engine = SelectionEngine::new(DwellConfig::default());
+        // No targets declared: a pointer hits nothing, so no event is emitted.
+        relay_input(&mut engine, &pointer_at(0.5, 0.5), Duration::ZERO, &bus);
+        assert!(
+            receiver.try_recv().is_err(),
+            "no target ⇒ no selection event"
+        );
+    }
+
+    #[test]
+    fn stamp_maps_dwell_progress_and_eta_onto_the_wire_event() {
+        let event = stamp(
+            SelectionUpdate::Dwell {
+                target: "key_e".into(),
+                progress: 0.5,
+                eta: Duration::from_millis(400),
+            },
+            Duration::from_micros(123),
+        );
+        match event {
+            SelectionEvent::Dwell {
+                progress, eta_ms, ..
+            } => {
+                assert!((progress.get() - 0.5).abs() < 1e-9);
+                assert_eq!(eta_ms, 400);
+            }
+            other => panic!("expected a dwell event, got {other:?}"),
+        }
     }
 }

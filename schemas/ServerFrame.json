@@ -229,6 +229,30 @@
             "enabled"
           ],
           "type": "object"
+        },
+        {
+          "description": "Emergency alert raised or cleared by the user (SPEC §7.A, D-7.4).\nBroadcast to every paired client on the `system` topic: each shows a\nbanner, the main installation rings locally. Phase 5.4.",
+          "properties": {
+            "active": {
+              "description": "`true` raises the alert, `false` clears it.",
+              "type": "boolean"
+            },
+            "at": {
+              "description": "When the state last changed (hub clock).",
+              "format": "date-time",
+              "type": "string"
+            },
+            "k": {
+              "const": "system.emergency",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k",
+            "active",
+            "at"
+          ],
+          "type": "object"
         }
       ]
     },
