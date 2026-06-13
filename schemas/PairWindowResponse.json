@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /pair/window` response — what the main screen displays.",
+  "properties": {
+    "code": {
+      "description": "Eight-digit single-use code to read out loud or scan.",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "When the window closes (2 minutes).",
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "expires_at"
+  ],
+  "title": "PairWindowResponse",
+  "type": "object"
+}

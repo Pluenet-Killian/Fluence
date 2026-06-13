@@ -81,6 +81,27 @@ pub struct QueryParam {
     pub description: &'static str,
 }
 
+/// Authentication requirement of a route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteAuth {
+    /// No token at all — the two pairing routes only (SPEC §2.A).
+    Public,
+    /// Device token required. `system` always passes; the listed scopes
+    /// pass too. `Scoped(&[])` therefore means **system-only**.
+    Scoped(&'static [Scope]),
+}
+
+impl RouteAuth {
+    /// Non-system scopes allowed on this route (`None` = public).
+    #[must_use]
+    pub fn allowed_scopes(self) -> Option<&'static [Scope]> {
+        match self {
+            Self::Public => None,
+            Self::Scoped(scopes) => Some(scopes),
+        }
+    }
+}
+
 /// One declared route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteSpec {
@@ -90,10 +111,8 @@ pub struct RouteSpec {
     pub path: &'static str,
     /// One-line summary (`OpenAPI` `summary`).
     pub summary: &'static str,
-    /// Scopes allowed to call this route. Empty = no token required (the
-    /// two pairing routes only, SPEC §2.A). `system` is implicitly allowed
-    /// everywhere and never listed.
-    pub scopes: &'static [Scope],
+    /// Authentication requirement.
+    pub auth: RouteAuth,
     /// Stability level (`x-fluence-stability`).
     pub stability: Stability,
     /// Request-body schema (component name), if any.
@@ -119,7 +138,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/pair",
             summary: "Pair a device (only while a pairing window is open)",
-            scopes: &[],
+            auth: RouteAuth::Public,
             stability: Stable,
             request: Some("PairRequest"),
             response: Json("PairResponse"),
@@ -129,7 +148,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/pair/info",
             summary: "Pairing screen information",
-            scopes: &[],
+            auth: RouteAuth::Public,
             stability: Stable,
             request: None,
             response: Json("PairInfo"),
@@ -137,9 +156,19 @@ pub fn routes() -> &'static [RouteSpec] {
         },
         RouteSpec {
             method: Post,
+            path: "/api/v1/pair/window",
+            summary: "Open the pairing window (main UI only; 2 min, single-use code)",
+            auth: RouteAuth::Scoped(&[]), // system-only (SPEC §2.A)
+            stability: Stable,
+            request: Some("PairWindowRequest"),
+            response: Json("PairWindowResponse"),
+            query: &[],
+        },
+        RouteSpec {
+            method: Post,
             path: "/api/v1/sessions",
             summary: "Open a conversation session (warm KV-cache)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: None,
             response: Json("CreateSessionResponse"),
@@ -149,7 +178,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Delete,
             path: "/api/v1/sessions/{id}",
             summary: "Close a session",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: None,
             response: NoContent,
@@ -159,7 +188,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/sessions/{id}/turns",
             summary: "Ingest a conversation turn",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: Some("Turn"),
             response: NoContent,
@@ -169,7 +198,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/sessions/{id}/suggest",
             summary: "Stream suggestions (SSE, per-slot cancellation)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: Some("SuggestRequest"),
             response: Sse("SuggestEvent"),
@@ -179,7 +208,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/sessions/{id}/next-chars",
             summary: "Next-character distribution on the warm KV",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: None,
             response: Json("NextCharsResponse"),
@@ -193,17 +222,27 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Put,
             path: "/api/v1/sessions/{id}/draft",
             summary: "Synchronize the draft (continuous autosave)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: Some("Draft"),
             response: NoContent,
             query: &[],
         },
         RouteSpec {
+            method: Get,
+            path: "/api/v1/sessions/{id}/draft",
+            summary: "Read the draft back (session resumption after a cut, SPEC §2.A)",
+            auth: RouteAuth::Scoped(&[Control]),
+            stability: Stable,
+            request: None,
+            response: Json("Draft"),
+            query: &[],
+        },
+        RouteSpec {
             method: Post,
             path: "/api/v1/memory/items",
             summary: "Create a memory item",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Experimental,
             request: Some("CreateMemoryItem"),
             response: Json("MemoryItem"),
@@ -213,7 +252,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/memory/search",
             summary: "Search personal memory (ACL-filtered)",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Experimental,
             request: None,
             response: Json("MemorySearchResponse"),
@@ -227,7 +266,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Delete,
             path: "/api/v1/memory/items/{id}",
             summary: "Delete a memory item",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Experimental,
             request: None,
             response: NoContent,
@@ -237,7 +276,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/memory/pending",
             summary: "Validation queue of learned candidates",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: None,
             response: Json("PendingResponse"),
@@ -247,7 +286,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/memory/pending/{id}/accept",
             summary: "Accept a learned candidate into memory",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: None,
             response: NoContent,
@@ -257,7 +296,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/memory/pending/{id}/reject",
             summary: "Reject a learned candidate",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: None,
             response: NoContent,
@@ -267,7 +306,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/memory/forget",
             summary: "Semantic forgetting: list candidates to confirm",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: Some("ForgetRequest"),
             response: Json("ForgetCandidates"),
@@ -277,7 +316,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/voice/speak",
             summary: "Vocalize text (P0 scheduler priority, streamed Opus)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: Some("SpeakRequest"),
             response: AudioStream,
@@ -287,7 +326,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/voice/voices",
             summary: "List installed voices",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Stable,
             request: None,
             response: Json("VoicesResponse"),
@@ -297,7 +336,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/asr/consent",
             summary: "Obtain a journaled ASR consent token (explicit UI action)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: None,
             response: Json("ConsentResponse"),
@@ -307,7 +346,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Post,
             path: "/api/v1/asr/listening",
             summary: "Start/stop partner-speech listening (consent required)",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Experimental,
             request: Some("ListeningRequest"),
             response: NoContent,
@@ -317,7 +356,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/profiles/{id}",
             summary: "Read a profile",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Experimental,
             request: None,
             response: Json("Profile"),
@@ -327,7 +366,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Put,
             path: "/api/v1/profiles/{id}",
             summary: "Replace a profile",
-            scopes: &[Control, Care],
+            auth: RouteAuth::Scoped(&[Control, Care]),
             stability: Experimental,
             request: Some("Profile"),
             response: NoContent,
@@ -337,7 +376,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Put,
             path: "/api/v1/input/targets",
             summary: "Declare the full target map of a surface",
-            scopes: &[Control],
+            auth: RouteAuth::Scoped(&[Control]),
             stability: Stable,
             request: Some("TargetMap"),
             response: NoContent,
@@ -347,7 +386,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/system/health",
             summary: "Worker states, models, rolling latencies",
-            scopes: &[Display, Control, Care],
+            auth: RouteAuth::Scoped(&[Display, Control, Care]),
             stability: Stable,
             request: None,
             response: Json("HealthResponse"),
@@ -357,7 +396,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/api/v1/system/capabilities",
             summary: "Installation tier and available features",
-            scopes: &[Display, Control, Care],
+            auth: RouteAuth::Scoped(&[Display, Control, Care]),
             stability: Stable,
             request: None,
             response: Json("CapabilitiesResponse"),
@@ -367,7 +406,7 @@ pub fn routes() -> &'static [RouteSpec] {
             method: Get,
             path: "/ws",
             summary: "WebSocket upgrade — topics via ?topics=…&v=1 (scope-filtered)",
-            scopes: &[Display, Control, Care],
+            auth: RouteAuth::Scoped(&[Display, Control, Care]),
             stability: Stable,
             request: None,
             response: WebSocketUpgrade,
@@ -416,10 +455,19 @@ mod tests {
         // SPEC §2.A: every other route requires a scoped token.
         let tokenless: Vec<_> = routes()
             .iter()
-            .filter(|r| r.scopes.is_empty())
+            .filter(|r| r.auth == RouteAuth::Public)
             .map(|r| r.path)
             .collect();
         assert_eq!(tokenless, ["/pair", "/pair/info"]);
+    }
+
+    #[test]
+    fn pair_window_is_system_only() {
+        let window = routes()
+            .iter()
+            .find(|r| r.path == "/api/v1/pair/window")
+            .expect("declared");
+        assert_eq!(window.auth, RouteAuth::Scoped(&[]));
     }
 
     #[test]

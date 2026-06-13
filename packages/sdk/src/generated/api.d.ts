@@ -175,6 +175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pair/window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open the pairing window (main UI only; 2 min, single-use code) */
+        post: operations["post_pair_window"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/profiles/{id}": {
         parameters: {
             query?: never;
@@ -234,7 +251,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the draft back (session resumption after a cut, SPEC §2.A) */
+        get: operations["get_sessions_id_draft"];
         /** Synchronize the draft (continuous autosave) */
         put: operations["put_sessions_id_draft"];
         post?: never;
@@ -719,8 +737,11 @@ export interface components {
              * @description API version served by this hub.
              */
             api_version: number;
-            /** @description Local CA fingerprint to compare on the pairing screen (TOFU path). */
-            ca_fingerprint: string;
+            /**
+             * @description Local CA fingerprint to compare on the pairing screen (TOFU path).
+             *     Present in home mode only.
+             */
+            ca_fingerprint?: string | null;
             /** @description Household name announced over mDNS (§2.A). */
             household_name: string;
             /** @description Whether a pairing window is currently open. */
@@ -737,12 +758,34 @@ export interface components {
         };
         /** @description `POST /pair` response: everything the device needs to talk to the hub. */
         PairResponse: {
-            /** @description Local CA certificate (PEM) for TLS pinning (home mode, §2.A). */
-            ca_cert: string;
+            /**
+             * @description Local CA certificate (PEM) for TLS pinning. Present in home mode
+             *     only — loopback embedded mode has no TLS (§2.A).
+             */
+            ca_cert?: string | null;
             /** @description Per-device revocable token (header `X-Fluence-Token`). */
             device_token: string;
             /** @description Scope granted by this pairing window. */
             scope: components["schemas"]["Scope"];
+        };
+        /**
+         * @description `POST /pair/window` request — opens the pairing window from the main
+         *     UI (SPEC §2.A: pairing is only possible during an explicitly opened
+         *     window; the route itself is system-scope, ADR-0005 §7).
+         */
+        PairWindowRequest: {
+            /** @description Scope the resulting token will carry. */
+            scope: components["schemas"]["Scope"];
+        };
+        /** @description `POST /pair/window` response — what the main screen displays. */
+        PairWindowResponse: {
+            /** @description Eight-digit single-use code to read out loud or scan. */
+            code: string;
+            /**
+             * Format: date-time
+             * @description When the window closes (2 minutes).
+             */
+            expires_at: string;
         };
         /** @description A candidate item in the validation queue. */
         PendingMemoryItem: {
@@ -1573,6 +1616,39 @@ export interface operations {
             };
         };
     };
+    post_pair_window: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairWindowRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairWindowResponse"];
+                };
+            };
+            /** @description Error (RFC 9457) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_profiles_id: {
         parameters: {
             query?: never;
@@ -1683,6 +1759,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error (RFC 9457) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_sessions_id_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Draft"];
+                };
             };
             /** @description Error (RFC 9457) */
             default: {

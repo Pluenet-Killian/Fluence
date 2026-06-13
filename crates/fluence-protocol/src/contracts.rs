@@ -29,6 +29,8 @@ macro_rules! for_each_root_type {
         $apply!(crate::api::pair::PairRequest);
         $apply!(crate::api::pair::PairResponse);
         $apply!(crate::api::pair::PairInfo);
+        $apply!(crate::api::pair::PairWindowRequest);
+        $apply!(crate::api::pair::PairWindowResponse);
         $apply!(crate::api::sessions::CreateSessionResponse);
         $apply!(crate::api::sessions::Turn);
         $apply!(crate::api::sessions::Draft);
@@ -193,16 +195,19 @@ fn operation(route: &RouteSpec) -> Value {
         json!(route.stability.as_str()),
     );
 
-    if route.scopes.is_empty() {
-        op.insert("security".into(), json!([]));
-    } else {
-        op.insert("security".into(), json!([{ "fluenceToken": [] }]));
-        let scopes: Vec<Value> = route
-            .scopes
-            .iter()
-            .map(|s| serde_json::to_value(s).expect("scopes serialize"))
-            .collect();
-        op.insert("x-fluence-scopes".into(), Value::Array(scopes));
+    match route.auth.allowed_scopes() {
+        None => {
+            op.insert("security".into(), json!([]));
+        }
+        Some(allowed) => {
+            op.insert("security".into(), json!([{ "fluenceToken": [] }]));
+            // `system` passes everywhere; an empty list = system-only.
+            let scopes: Vec<Value> = allowed
+                .iter()
+                .map(|s| serde_json::to_value(s).expect("scopes serialize"))
+                .collect();
+            op.insert("x-fluence-scopes".into(), Value::Array(scopes));
+        }
     }
 
     let parameters = parameters(route);

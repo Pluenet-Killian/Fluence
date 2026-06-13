@@ -27,28 +27,16 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "`POST /pair` response: everything the device needs to talk to the hub.",
+  "description": "`POST /pair/window` request — opens the pairing window from the main\nUI (SPEC §2.A: pairing is only possible during an explicitly opened\nwindow; the route itself is system-scope, ADR-0005 §7).",
   "properties": {
-    "ca_cert": {
-      "description": "Local CA certificate (PEM) for TLS pinning. Present in home mode\nonly — loopback embedded mode has no TLS (§2.A).",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "device_token": {
-      "description": "Per-device revocable token (header `X-Fluence-Token`).",
-      "type": "string"
-    },
     "scope": {
       "$ref": "#/$defs/Scope",
-      "description": "Scope granted by this pairing window."
+      "description": "Scope the resulting token will carry."
     }
   },
   "required": [
-    "device_token",
     "scope"
   ],
-  "title": "PairResponse",
+  "title": "PairWindowRequest",
   "type": "object"
 }
