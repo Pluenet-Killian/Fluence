@@ -50,6 +50,10 @@ pub struct HubConfig {
     pub llama_model_path: Option<PathBuf>,
     /// Context window passed to `llama-server` (`-c`).
     pub llama_context_size: u32,
+    /// GPU layers to offload (`-ngl`). Default 0 (CPU only — the reduced tier
+    /// FLU-REF-1 has no GPU). Set high (e.g. 99) to offload all layers on a GPU
+    /// build of `llama-server`; E4B is far faster offloaded (SPEC §3 GPU tier).
+    pub llama_gpu_layers: u32,
 }
 
 impl Default for HubConfig {
@@ -64,6 +68,7 @@ impl Default for HubConfig {
             llama_server_command: None,
             llama_model_path: None,
             llama_context_size: DEFAULT_LLAMA_CONTEXT,
+            llama_gpu_layers: 0,
         }
     }
 }
@@ -172,6 +177,13 @@ impl HubConfig {
         if let Some(value) = lookup("FLUENCE_LLAMA_CONTEXT") {
             self.llama_context_size = value.parse().map_err(|e| ConfigError::InvalidEnv {
                 name: "FLUENCE_LLAMA_CONTEXT",
+                value,
+                reason: format!("{e}"),
+            })?;
+        }
+        if let Some(value) = lookup("FLUENCE_LLAMA_GPU_LAYERS") {
+            self.llama_gpu_layers = value.parse().map_err(|e| ConfigError::InvalidEnv {
+                name: "FLUENCE_LLAMA_GPU_LAYERS",
                 value,
                 reason: format!("{e}"),
             })?;

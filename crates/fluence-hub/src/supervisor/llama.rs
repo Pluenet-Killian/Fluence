@@ -45,6 +45,14 @@ use crate::events::EventBus;
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
 /// How often `/health` is polled while waiting for readiness.
 const HEALTH_POLL_PERIOD: Duration = Duration::from_millis(250);
+/// How often `/health` is probed once the instance is serving. A wedged server
+/// (alive but no longer answering) is caught within
+/// `LIVENESS_PROBE_PERIOD × LIVENESS_MAX_FAILURES`.
+const LIVENESS_PROBE_PERIOD: Duration = Duration::from_secs(2);
+/// Consecutive failed liveness probes before the instance is declared wedged
+/// and restarted. Greater than one so a single transient blip does not bounce
+/// an otherwise healthy server.
+const LIVENESS_MAX_FAILURES: u32 = 3;
 
 /// What to spawn for the LLM backend.
 #[derive(Debug, Clone)]
@@ -58,6 +66,10 @@ pub struct LlamaSpec {
     pub port: u16,
     /// Context window passed as `-c`.
     pub context_size: u32,
+    /// GPU layers to offload (`-ngl`); 0 = CPU only. A GPU build of
+    /// `llama-server` honours this (E4B is far faster offloaded); the CPU build
+    /// and the test fake ignore it.
+    pub gpu_layers: u32,
 }
 
 /// The LLM backend wrapped in a readiness gate.
@@ -221,6 +233,24 @@ async fn lifecycle(
     }
 }
 
+/// The `llama-server` CLI arguments for `spec`, extracted so they stay unit
+/// testable: model, loopback host/port, context window, and GPU offload.
+fn spawn_args(spec: &LlamaSpec) -> Vec<std::ffi::OsString> {
+    use std::ffi::OsString;
+    vec![
+        OsString::from("-m"),
+        spec.model.clone().into_os_string(),
+        OsString::from("--host"),
+        OsString::from("127.0.0.1"),
+        OsString::from("--port"),
+        OsString::from(spec.port.to_string()),
+        OsString::from("-c"),
+        OsString::from(spec.context_size.to_string()),
+        OsString::from("-ngl"),
+        OsString::from(spec.gpu_layers.to_string()),
+    ]
+}
+
 /// Runs one instance: spawn, wait for `/health`, then watch until it exits or a
 /// shutdown is requested. `on_ready` fires once, after the first healthy probe.
 async fn run_one_instance(
@@ -232,14 +262,7 @@ async fn run_one_instance(
     // stdout/stderr go to the void on purpose: llama-server can log prompt and
     // completion text, which is P0 — it must never reach our logs (§9.A).
     let mut child = match Command::new(&spec.command)
-        .arg("-m")
-        .arg(&spec.model)
-        .arg("--host")
-        .arg("127.0.0.1")
-        .arg("--port")
-        .arg(spec.port.to_string())
-        .arg("-c")
-        .arg(spec.context_size.to_string())
+        .args(spawn_args(spec))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -281,14 +304,43 @@ async fn run_one_instance(
     ready.store(true, Ordering::Release);
     on_ready();
 
-    tokio::select! {
-        exit = child.wait() => InstanceOutcome::Died(match exit {
-            Ok(status) => format!("process exited: {status}"),
-            Err(error) => format!("wait failed: {error}"),
-        }),
-        _ = shutdown.changed() => {
-            let _ = child.kill().await;
-            InstanceOutcome::ShutdownRequested
+    // Serving. Watch for the three ways the instance stops being usable: it
+    // exits, a shutdown is requested, or it *wedges* — stays alive but stops
+    // answering `/health`. A dead-process watch (`child.wait()`) never fires for
+    // a live-but-wedged server, so a periodic liveness probe is the only way to
+    // notice; after enough consecutive failures we restart it so `/suggest`
+    // degrades to the n-gram fallback rather than stalling (D-2.6).
+    let mut probe = tokio::time::interval(LIVENESS_PROBE_PERIOD);
+    probe.tick().await; // the first tick is immediate — consume it
+    let mut consecutive_failures = 0u32;
+    loop {
+        tokio::select! {
+            exit = child.wait() => {
+                return InstanceOutcome::Died(match exit {
+                    Ok(status) => format!("process exited: {status}"),
+                    Err(error) => format!("wait failed: {error}"),
+                });
+            }
+            _ = shutdown.changed() => {
+                let _ = child.kill().await;
+                return InstanceOutcome::ShutdownRequested;
+            }
+            _ = probe.tick() => {
+                if is_healthy(&backend).await {
+                    consecutive_failures = 0;
+                } else {
+                    consecutive_failures += 1;
+                    if consecutive_failures >= LIVENESS_MAX_FAILURES {
+                        // Stop serving immediately, then kill the wedged process
+                        // so the lifecycle loop restarts it under backoff.
+                        ready.store(false, Ordering::Release);
+                        let _ = child.kill().await;
+                        return InstanceOutcome::Died(format!(
+                            "health probe failed {consecutive_failures}× (wedged)"
+                        ));
+                    }
+                }
+            }
         }
     }
 }
@@ -335,5 +387,29 @@ mod tests {
             backend.next_chars("x", 4),
             Err(BackendError::Unavailable(_))
         ));
+    }
+
+    #[test]
+    fn spawn_args_pass_model_port_context_and_gpu_layers() {
+        let spec = LlamaSpec {
+            command: PathBuf::from("llama-server"),
+            model: PathBuf::from("/models/m.gguf"),
+            port: 8099,
+            context_size: 4096,
+            gpu_layers: 99,
+        };
+        let args: Vec<String> = spawn_args(&spec)
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        // GPU offload must flow through, else the GPU tier silently runs on CPU.
+        let ngl = args.iter().position(|a| a == "-ngl").expect("-ngl present");
+        assert_eq!(args[ngl + 1], "99");
+        assert!(args.windows(2).any(|w| w[0] == "--port" && w[1] == "8099"));
+        assert!(args.windows(2).any(|w| w[0] == "-c" && w[1] == "4096"));
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-m" && w[1] == "/models/m.gguf")
+        );
     }
 }

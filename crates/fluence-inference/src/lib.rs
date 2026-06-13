@@ -23,7 +23,7 @@ pub use backend::{
     BackendError, CancelToken, GenerateOutcome, GenerateRequest, LlmBackend, StubBackend,
     UnavailableBackend,
 };
-pub use llama_server::LlamaServerBackend;
+pub use llama_server::{BackendTimeouts, LlamaServerBackend};
 
 #[cfg(test)]
 mod tests {
