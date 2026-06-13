@@ -299,8 +299,9 @@ fn responses(route: &RouteSpec) -> Value {
         }),
         ResponseSpec::AudioStream => json!({
             "200": {
-                "description": "Streamed audio",
-                "content": { "audio/ogg": { "schema": { "type": "string", "format": "binary" } } },
+                "description": "Streamed audio (WAV, 16-bit mono PCM — ADR-0009; \
+                                Opus/Ogg for LAN/home mode is deferred to Phase 7)",
+                "content": { "audio/wav": { "schema": { "type": "string", "format": "binary" } } },
             },
         }),
         ResponseSpec::NoContent => json!({ "204": { "description": "No content" } }),

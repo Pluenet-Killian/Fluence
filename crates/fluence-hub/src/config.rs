@@ -50,6 +50,14 @@ pub struct HubConfig {
     pub llama_model_path: Option<PathBuf>,
     /// Context window passed to `llama-server` (`-c`).
     pub llama_context_size: u32,
+    /// Path to the `piper` binary (TTS, D-6.1). With [`Self::piper_voice`] set,
+    /// the hub serves `/voice/speak` with Piper; otherwise the OS voice is used
+    /// (« une voix, toujours », SPEC §2.C).
+    pub piper_command: Option<PathBuf>,
+    /// Path to the Piper ONNX voice model.
+    pub piper_voice: Option<PathBuf>,
+    /// Voice id advertised for the configured Piper voice.
+    pub piper_voice_id: String,
 }
 
 impl Default for HubConfig {
@@ -64,6 +72,9 @@ impl Default for HubConfig {
             llama_server_command: None,
             llama_model_path: None,
             llama_context_size: DEFAULT_LLAMA_CONTEXT,
+            piper_command: None,
+            piper_voice: None,
+            piper_voice_id: "piper:fr_FR-siwis-medium".to_owned(),
         }
     }
 }
@@ -175,6 +186,15 @@ impl HubConfig {
                 value,
                 reason: format!("{e}"),
             })?;
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_BIN") {
+            self.piper_command = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_VOICE") {
+            self.piper_voice = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_PIPER_VOICE_ID") {
+            self.piper_voice_id = value;
         }
         Ok(())
     }

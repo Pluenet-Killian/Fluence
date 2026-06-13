@@ -13,6 +13,7 @@ use fluence_inference::{CancelToken, LlmBackend, UnavailableBackend};
 use fluence_ngram::NgramModel;
 use fluence_protocol::api::pair::Scope;
 use fluence_store::{DraftWrite, Store};
+use fluence_voice::{UnavailableVoice, VoiceBackend};
 use secrecy::SecretString;
 use tokio::time::Instant;
 
@@ -172,6 +173,10 @@ struct Inner {
     suggest_slots: Mutex<HashMap<(String, String), (u64, CancelToken)>>,
     /// Monotonic source for suggestion-slot generations.
     suggest_generation: AtomicU64,
+    /// The voice backend `/voice/speak` calls. Defaults to
+    /// [`UnavailableVoice`]; production wires Piper with the OS voice as a
+    /// fallback (« une voix, toujours », SPEC §2.C).
+    voice: Arc<dyn VoiceBackend>,
 }
 
 /// Cheaply cloneable hub state.
@@ -190,6 +195,7 @@ impl AppState {
             bus,
             Arc::new(UnavailableBackend),
             Arc::new(NgramModel::new()),
+            Arc::new(UnavailableVoice),
         )
     }
 
@@ -203,6 +209,7 @@ impl AppState {
         bus: EventBus,
         engine: Arc<dyn LlmBackend>,
         fallback: Arc<NgramModel>,
+        voice: Arc<dyn VoiceBackend>,
     ) -> Self {
         Self(Arc::new(Inner {
             config,
@@ -221,6 +228,7 @@ impl AppState {
             fallback,
             suggest_slots: Mutex::new(HashMap::new()),
             suggest_generation: AtomicU64::new(0),
+            voice,
         }))
     }
 
@@ -252,6 +260,12 @@ impl AppState {
     #[must_use]
     pub fn fallback(&self) -> &Arc<NgramModel> {
         &self.0.fallback
+    }
+
+    /// The voice backend `/voice/speak` calls (D-6.1).
+    #[must_use]
+    pub fn voice(&self) -> &Arc<dyn VoiceBackend> {
+        &self.0.voice
     }
 
     /// Registers a new suggestion on `(session, slot)`, cancelling any in-flight

@@ -22,6 +22,7 @@ fluence-ipc = { version = "0.0.0", path = "../fluence-ipc" }
 fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
 fluence-store = { version = "0.0.0", path = "../fluence-store" }
+fluence-voice = { version = "0.0.0", path = "../fluence-voice" }
 rand = "0.10.1"
 secrecy = "0.10.3"
 serde = { version = "1.0.228", features = ["derive"] }

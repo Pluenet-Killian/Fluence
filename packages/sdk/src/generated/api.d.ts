@@ -1022,8 +1022,8 @@ export interface components {
          */
         SourceId: string;
         /**
-         * @description `POST /voice/speak` request. Response: streamed audio
-         *     (`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).
+         * @description `POST /voice/speak` request. Response: streamed audio (`audio/wav` in v0 —
+         *     ADR-0009), first sample < 200 ms (SPEC §5.A).
          */
         SpeakRequest: {
             /**
@@ -2084,13 +2084,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Streamed audio */
+            /** @description Streamed audio (WAV, 16-bit mono PCM — ADR-0009; Opus/Ogg for LAN/home mode is deferred to Phase 7) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "audio/ogg": string;
+                    "audio/wav": string;
                 };
             };
             /** @description Error (RFC 9457) */
