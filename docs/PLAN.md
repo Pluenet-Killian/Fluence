@@ -165,11 +165,11 @@
 - T1 : assemblage contexte = **golden prompts** (fixtures lisibles, revue humaine du prompt exact) ; comptage tokens ≤ budget ; datation relative.
 - T1/T2 : agrégation BPE→char — propriétés (somme ≈ 1 ; déterminisme ; « bonjou » → « r » dominant avec le tiny-model en greedy).
 - T4 : SSE de bout en bout avec tiny-LLM (greedy, seed) : delta → final ; **annulation par slot** : 2e requête sur `main` → la 1re reçoit `aborted` < 50 ms ; kill du worker-llm pendant une génération → `/suggest` bascule n-gram (réponse dégradée signalée, jamais d'erreur 500).
-- T6 harnais : `rephrase` (E2B, nightly self-hosted ou local) **bat le n-gram d'au moins +10 points de KS%** sur le corpus v0 — premier critère de valeur ; latences `provisional` tracées par PR (tiny) + contractuelles nightly (E2B).
+- T6 harnais : `rephrase` (modèle capable, local/nightly) **bat le n-gram sur le WPM simulé (primaire — l'étoile polaire ×3, SPEC §1.2) et sur le KS% hors-domaine** (n-gram entraîné sur le split *train*, évalué sur *test* ; tranche corpus #18 ; fragments télégraphiques réalistement courts) — critère de valeur **amendé par ADR-0008** (le « +10 pts KS% in-domain sur le seed v0 » était un proxy biaisé : n-gram sur-appris + plafond de longueur du fragment ; mesure réelle = WPM rephrase 18,35 > n-gram 15,87, acceptation 0,93) ; latences `provisional` par PR (tiny) + contractuelles nightly (modèle capable).
 
 **Done quand**
 - [ ] `fluencectl suggest --mode rephrase "veu eau frache ce soir"` → 3 propositions correctes en français.
-- [ ] Rapport harnais : rephrase > n-gram > lettre-à-lettre, publié en nightly.
+- [ ] Rapport harnais (tranche #18, hors-domaine) : rephrase > n-gram sur le **WPM** *et* sur le **KS% hors-domaine**, lettre-à-lettre en plancher ; publié (local/nightly) — critère amendé **ADR-0008**.
 - [ ] Kill-test LLM : dégradation gracieuse prouvée en CI.
 
 ---
