@@ -153,11 +153,22 @@ pub fn build_router(state: AppState) -> Router {
         .merge(public)
         .merge(authed)
         .merge(websocket)
+        // Explicit request-body ceiling (G7): do not depend on axum's
+        // implicit default. Generous for a JSON draft (text itself is
+        // capped far lower in `put_draft`, F09) yet bounds any single
+        // request a local device can send.
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         // CORS: strict allowlist — empty in Phase 2 (no web client yet),
         // so any cross-origin browser call is refused (SPEC §2.A).
         .layer(tower_http::cors::CorsLayer::new())
         .with_state(state)
 }
+
+/// Explicit hub-wide cap on a single request body (G7). Comfortably above
+/// a JSON-encoded draft at the text limit (`state::MAX_DRAFT_TEXT_BYTES`,
+/// 64 KiB) even when every character escapes, while replacing axum's
+/// implicit default with a documented, stable bound.
+const MAX_REQUEST_BODY_BYTES: usize = 512 * 1024;
 
 /// Builds the RFC 9457 response for `code` (uniform error shape).
 #[must_use]

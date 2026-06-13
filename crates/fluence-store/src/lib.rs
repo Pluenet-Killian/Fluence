@@ -203,6 +203,20 @@ impl Store {
             .await
     }
 
+    /// Purges drafts untouched since `older_than_micros` (F09 disk bound).
+    /// Returns the number removed — metadata only, never P0.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError`] on database failure or closed store.
+    pub async fn purge_stale_drafts(&self, older_than_micros: u64) -> Result<u64, StoreError> {
+        self.call(|reply| Command::PurgeStaleDrafts {
+            older_than_micros,
+            reply,
+        })
+        .await
+    }
+
     /// Appends an access-journal entry (metadata only — never P0).
     ///
     /// # Errors

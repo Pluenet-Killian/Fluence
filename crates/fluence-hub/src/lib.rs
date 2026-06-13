@@ -99,15 +99,19 @@ impl RunningHub {
 /// Panics if the freshly bound listener has no local address — an OS
 /// invariant violation that cannot occur in practice.
 pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
+    let store_path = config.data_dir.join("store.db");
+    let key = store_key_source(&config);
+    warn_if_at_rest_degraded(&key, &store_path);
     let store = Store::open(StoreConfig {
-        path: config.data_dir.join("store.db"),
-        key: store_key_source(&config),
+        path: store_path,
+        key,
     })
     .await?;
 
     let bus = EventBus::new();
     let state = AppState::new(config, store, bus);
     state.spawn_draft_flusher();
+    state.spawn_draft_purger();
 
     // Bootstrap system token: the embedded UI and the local CLI read it
     // from the data dir (same trust boundary as the store key — local
@@ -176,6 +180,33 @@ fn store_key_source(config: &HubConfig) -> KeySource {
     }
 }
 
+/// Warns, at every boot, when the store master key lives in a plaintext
+/// file rather than the OS keystore — disk-theft coverage (SPEC §9.A
+/// « voleur du PC ») is then degraded, never silently (F06). The warning
+/// escalates when the key file sits in the SAME directory as `store.db`:
+/// copying that directory hands an attacker both ciphertext and key.
+///
+/// Logs only paths and booleans — never the key material or any P0.
+fn warn_if_at_rest_degraded(key: &KeySource, store_path: &std::path::Path) {
+    let KeySource::File(key_path) = key else {
+        return; // OS keystore: key is login-bound, disk theft cannot decrypt.
+    };
+    if key_path.parent() == store_path.parent() {
+        tracing::warn!(
+            key_path = %key_path.display(),
+            "store key is a plaintext file next to the database: copying the data \
+             directory defeats at-rest encryption (SPEC §9.A). Use the OS keystore, \
+             or move the key onto separate, access-controlled storage."
+        );
+    } else {
+        tracing::warn!(
+            key_path = %key_path.display(),
+            "store key is a plaintext file (not the OS keystore): at-rest protection \
+             is only as strong as that file's access control (SPEC §9.A)."
+        );
+    }
+}
+
 /// Creates (first run) or verifies the local system token and writes it
 /// to `data_dir/system.token`. The file inherits the data dir's
 /// protection, exactly like the store key file.
@@ -195,16 +226,12 @@ async fn ensure_system_token(state: &AppState) -> Result<(), HubError> {
         // Stale file (store reset): fall through and mint a fresh one.
     }
     let token = auth::generate_token();
-    state
-        .store()
-        .insert_device(fluence_store::NewDevice {
-            device_id: uuid::Uuid::new_v4().to_string(),
-            token_hash: auth::token_hash(&token),
-            name: "Embedded UI / local CLI".to_owned(),
-            kind: DeviceKind::Desktop,
-            scope: Scope::System,
-        })
-        .await?;
+    // Write the token file BEFORE inserting the device (G2): if the write
+    // fails, no device row is persisted, so a failed boot leaves nothing
+    // behind — not an orphan `system` device re-minted (without revoking the
+    // old one) on every retry. A token file with no matching device is
+    // harmless: the next boot reads it, finds no device, and re-mints,
+    // overwriting the file.
     std::fs::create_dir_all(&state.config().data_dir).map_err(|source| HubError::Setup {
         context: "create data dir",
         source,
@@ -216,8 +243,23 @@ async fn ensure_system_token(state: &AppState) -> Result<(), HubError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(
+            |source| HubError::Setup {
+                context: "restrict system token permissions",
+                source,
+            },
+        )?;
     }
+    state
+        .store()
+        .insert_device(fluence_store::NewDevice {
+            device_id: uuid::Uuid::new_v4().to_string(),
+            token_hash: auth::token_hash(&token),
+            name: "Embedded UI / local CLI".to_owned(),
+            kind: DeviceKind::Desktop,
+            scope: Scope::System,
+        })
+        .await?;
     Ok(())
 }
 

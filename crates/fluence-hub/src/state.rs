@@ -28,6 +28,39 @@ pub const PAIRING_MAX_ATTEMPTS: u32 = 5;
 /// period + commit time ≪ 1 s.
 pub const DRAFT_FLUSH_PERIOD: Duration = Duration::from_millis(500);
 
+/// Hard cap on a draft's text, in bytes (F09). A real composed message is
+/// a few hundred bytes; 64 KiB is far above any legitimate draft while
+/// keeping a flood of giant P0 `SecretString`s in RAM impossible. Enforced
+/// before any P0 allocation (`put_draft`); also the HTTP body limit (G7).
+pub const MAX_DRAFT_TEXT_BYTES: usize = 64 * 1024;
+
+/// Most distinct sessions whose unflushed draft the hub holds in RAM at
+/// once (F09). A household composes a handful at a time; past this, a
+/// Control device looping `PUT` under fresh ids is curbed. Overflow never
+/// drops or blocks a write — it forces an immediate flush so the P0 leaves
+/// RAM for the encrypted store (loss bound stays ≤ 1 s, D-2.6).
+pub const MAX_DIRTY_DRAFTS: usize = 256;
+
+/// Drafts untouched for this long are purged from disk (F09 disk bound).
+/// Generous: only abandoned/orphaned drafts (e.g. fabricated session ids)
+/// age out; a live conversation re-touches its draft far more often.
+pub const DRAFT_DISK_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
+/// How often the on-disk stale-draft purge runs (cheap indexed delete, off
+/// the hot path).
+pub const DRAFT_PURGE_PERIOD: Duration = Duration::from_secs(60 * 60);
+
+/// Concurrent `/ws` connections a single device may hold (F15). One real
+/// client opens one channel; a handful covers reconnect races and multiple
+/// windows. Past this, a paired-but-misbehaving device is curbed before it
+/// can exhaust file descriptors and take the keyboard path down (SPEC §2.C).
+pub const WS_MAX_PER_DEVICE: u32 = 8;
+
+/// Hub-wide ceiling on concurrent `/ws` connections (F15). A household
+/// backstop so no single device — even within its own quota — exhausts the
+/// process; well under a default 1024-FD limit.
+pub const WS_MAX_TOTAL: u32 = 128;
+
 /// Locks a state mutex, tolerating poisoning.
 ///
 /// A poisoned lock means a thread panicked mid-update. Every mutex here
@@ -101,6 +134,14 @@ fn prune_orphan_tombstones_locked(drafts: &mut DraftBuffer) {
     deleted_at.retain(|session_id, _| dirty.contains_key(session_id));
 }
 
+/// Open-`/ws` accounting (F15): per-device counts and their running total,
+/// guarded by one mutex so an admission decision is atomic.
+#[derive(Default)]
+struct WsCounters {
+    per_device: HashMap<String, u32>,
+    total: u32,
+}
+
 struct Inner {
     config: HubConfig,
     store: Store,
@@ -112,6 +153,9 @@ struct Inner {
     /// ≤ 2 writes/s for centuries).
     draft_generation: AtomicU64,
     workers: Mutex<Vec<Arc<WorkerHandle>>>,
+    /// Concurrent `/ws` connections, per device and in total (F15 `DoS`
+    /// guard).
+    ws_counters: Mutex<WsCounters>,
 }
 
 /// Cheaply cloneable hub state.
@@ -135,6 +179,7 @@ impl AppState {
             }),
             draft_generation: AtomicU64::new(0),
             workers: Mutex::new(Vec::new()),
+            ws_counters: Mutex::new(WsCounters::default()),
         }))
     }
 
@@ -182,13 +227,65 @@ impl AppState {
     /// Buffers a draft write (overwrites a previous unflushed one — only
     /// the latest state matters). A fresh write also clears any tombstone:
     /// typing again into a previously closed session reopens it.
-    pub fn buffer_draft(&self, session_id: String, draft: PendingDraft) {
+    ///
+    /// Returns `true` when this write pushed the buffer past
+    /// [`MAX_DIRTY_DRAFTS`] (F09): the caller must then flush immediately to
+    /// bring RAM back down. Updating an already-buffered session never
+    /// overflows, so an active session's keystrokes are never throttled —
+    /// only a brand-new session beyond the cap triggers it.
+    #[must_use = "an overflow means the caller must flush now to bound RAM (F09)"]
+    pub fn buffer_draft(&self, session_id: String, draft: PendingDraft) -> bool {
         let generation = self.0.draft_generation.fetch_add(1, Ordering::Relaxed);
         let mut drafts = lock(&self.0.drafts);
         drafts.deleted_at.remove(&session_id);
+        let is_new_session = !drafts.dirty.contains_key(&session_id);
         drafts
             .dirty
             .insert(session_id, BufferedDraft { draft, generation });
+        is_new_session && drafts.dirty.len() > MAX_DIRTY_DRAFTS
+    }
+
+    /// Reserves a `/ws` slot for `device_id` if both the per-device and
+    /// hub-wide ceilings allow it, returning a guard that releases the slot
+    /// on drop (F15). `None` means the device is at quota (or the hub is
+    /// saturated): the connection must be refused *before* upgrade, so no
+    /// task, no `broadcast::Receiver` and no file descriptor is committed.
+    /// Admission is decided under one lock — two simultaneous upgrades
+    /// cannot both take the last slot.
+    #[must_use]
+    pub fn try_acquire_ws(&self, device_id: &str) -> Option<WsConnectionGuard> {
+        let mut counters = lock(&self.0.ws_counters);
+        if counters.total >= WS_MAX_TOTAL {
+            return None;
+        }
+        let device_count = counters.per_device.get(device_id).copied().unwrap_or(0);
+        if device_count >= WS_MAX_PER_DEVICE {
+            return None;
+        }
+        counters.total += 1;
+        counters
+            .per_device
+            .insert(device_id.to_owned(), device_count + 1);
+        Some(WsConnectionGuard {
+            state: self.clone(),
+            device_id: device_id.to_owned(),
+        })
+    }
+
+    /// Releases one `/ws` slot (called only by [`WsConnectionGuard::drop`]).
+    fn release_ws(&self, device_id: &str) {
+        let mut counters = lock(&self.0.ws_counters);
+        counters.total = counters.total.saturating_sub(1);
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            counters.per_device.entry(device_id.to_owned())
+        {
+            let remaining = entry.get().saturating_sub(1);
+            if remaining == 0 {
+                entry.remove();
+            } else {
+                *entry.get_mut() = remaining;
+            }
+        }
     }
 
     /// Takes the pending draft of one session, if any (freshest read).
@@ -336,6 +433,44 @@ impl AppState {
             }
         });
     }
+
+    /// Spawns the periodic on-disk stale-draft purge (F09 disk bound), which
+    /// reclaims drafts no client has touched within [`DRAFT_DISK_TTL`] —
+    /// independent of the AI/worker health, so the keyboard guarantee is
+    /// untouched (SPEC §2.C). A store error is logged and retried next tick.
+    pub fn spawn_draft_purger(&self) {
+        let state = self.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(DRAFT_PURGE_PERIOD);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            let ttl_micros = u64::try_from(DRAFT_DISK_TTL.as_micros()).unwrap_or(u64::MAX);
+            loop {
+                tick.tick().await;
+                let now_micros = u64::try_from(Utc::now().timestamp_micros()).unwrap_or(0);
+                let cutoff = now_micros.saturating_sub(ttl_micros);
+                match state.store().purge_stale_drafts(cutoff).await {
+                    Ok(0) => {}
+                    Ok(purged) => tracing::debug!(purged, "stale drafts purged"),
+                    Err(error) => tracing::warn!(%error, "stale-draft purge failed"),
+                }
+            }
+        });
+    }
+}
+
+/// Releases its reserved `/ws` slot on drop (F15). Tying the slot's
+/// lifetime to a stack value guarantees the count is decremented on
+/// *every* exit of the connection task — clean close, error, or panic — so
+/// dropped connections can never leak the ceiling.
+pub struct WsConnectionGuard {
+    state: AppState,
+    device_id: String,
+}
+
+impl Drop for WsConnectionGuard {
+    fn drop(&mut self) {
+        self.state.release_ws(&self.device_id);
+    }
 }
 
 #[cfg(test)]
@@ -376,7 +511,7 @@ mod tests {
         let state = test_state(&dir).await;
         let session = "s-race".to_owned();
 
-        state.buffer_draft(session.clone(), pending("p0 intime"));
+        let _ = state.buffer_draft(session.clone(), pending("p0 intime"));
         // The DELETE lands before the flush takes its snapshot.
         state.discard_pending_draft(&session);
 
@@ -400,7 +535,7 @@ mod tests {
     async fn a_store_error_keeps_the_draft_buffered() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = test_state(&dir).await;
-        state.buffer_draft("s1".to_owned(), pending("pas encore ecrite"));
+        let _ = state.buffer_draft("s1".to_owned(), pending("pas encore ecrite"));
 
         state.store().clone().close().await.expect("close");
         state.flush_drafts().await; // every write errors
@@ -419,10 +554,10 @@ mod tests {
         let state = test_state(&dir).await;
         let session = "s-reopen".to_owned();
 
-        state.buffer_draft(session.clone(), pending("first"));
+        let _ = state.buffer_draft(session.clone(), pending("first"));
         state.discard_pending_draft(&session);
         // A fresh keystroke after the close — strictly newer generation.
-        state.buffer_draft(session.clone(), pending("second"));
+        let _ = state.buffer_draft(session.clone(), pending("second"));
 
         state.flush_drafts().await;
 
@@ -442,7 +577,7 @@ mod tests {
         let state = test_state(&dir).await;
         let session = "s-live".to_owned();
 
-        state.buffer_draft(session.clone(), pending("bonjour"));
+        let _ = state.buffer_draft(session.clone(), pending("bonjour"));
         state.flush_drafts().await;
 
         let restored = state
@@ -452,5 +587,94 @@ mod tests {
             .expect("read")
             .expect("present");
         assert_eq!(restored.text.expose_secret(), "bonjour");
+    }
+
+    /// F09: the dirty-buffer cardinality cap. Buffering up to
+    /// `MAX_DIRTY_DRAFTS` distinct sessions never signals overflow; the
+    /// *next* brand-new session does, so the caller flushes and RAM stays
+    /// bounded. Re-buffering an already-dirty session never overflows — an
+    /// active conversation's keystrokes are never throttled (D-2.6).
+    #[tokio::test]
+    async fn a_new_session_past_the_cap_signals_overflow() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        for i in 0..MAX_DIRTY_DRAFTS {
+            assert!(
+                !state.buffer_draft(format!("s{i}"), pending("x")),
+                "session {i} is within the cap and must not overflow"
+            );
+        }
+        assert!(
+            state.buffer_draft("s-overflow".to_owned(), pending("x")),
+            "a new session beyond MAX_DIRTY_DRAFTS must signal overflow (F09)"
+        );
+        assert!(
+            !state.buffer_draft("s0".to_owned(), pending("y")),
+            "re-buffering an already-dirty session must never overflow"
+        );
+    }
+
+    /// F15: the per-device `/ws` ceiling. A device may hold up to
+    /// `WS_MAX_PER_DEVICE` slots; the next acquire is refused. A distinct
+    /// device keeps its own quota, and dropping a guard frees exactly one
+    /// slot so a disconnect lets the device reconnect (RAII release).
+    #[tokio::test]
+    async fn ws_admission_enforces_the_per_device_ceiling() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        let mut guards = Vec::new();
+        for _ in 0..WS_MAX_PER_DEVICE {
+            guards.push(
+                state
+                    .try_acquire_ws("dev-a")
+                    .expect("within the per-device quota"),
+            );
+        }
+        assert!(
+            state.try_acquire_ws("dev-a").is_none(),
+            "a device past WS_MAX_PER_DEVICE must be refused (F15)"
+        );
+        assert!(
+            state.try_acquire_ws("dev-b").is_some(),
+            "a distinct device has its own quota"
+        );
+
+        guards.pop(); // a connection ends: its guard drops, releasing one slot
+        assert!(
+            state.try_acquire_ws("dev-a").is_some(),
+            "a freed slot lets the device reconnect (RAII release)"
+        );
+    }
+
+    /// F15: the hub-wide `/ws` ceiling caps total concurrency even when load
+    /// is spread across many devices, each within its own per-device quota.
+    #[tokio::test]
+    async fn ws_admission_enforces_the_hub_wide_ceiling() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        let per_device = usize::try_from(WS_MAX_PER_DEVICE).expect("cap fits usize");
+        let total = usize::try_from(WS_MAX_TOTAL).expect("cap fits usize");
+        let devices = total.div_ceil(per_device);
+
+        let mut guards = Vec::new();
+        for d in 0..devices {
+            for _ in 0..per_device {
+                if let Some(guard) = state.try_acquire_ws(&format!("dev-{d}")) {
+                    guards.push(guard);
+                }
+            }
+        }
+        assert_eq!(
+            guards.len(),
+            total,
+            "exactly the hub-wide ceiling is admitted, no more"
+        );
+        assert!(
+            state.try_acquire_ws("dev-fresh").is_none(),
+            "the hub-wide ceiling caps total concurrency (F15)"
+        );
     }
 }

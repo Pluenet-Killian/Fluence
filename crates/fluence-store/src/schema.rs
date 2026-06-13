@@ -47,6 +47,12 @@ const MIGRATIONS: &[&str] = &[
         data        TEXT NOT NULL
     );
     ",
+    // v1 → v2: index drafts by recency so the stale-draft TTL purge (F09)
+    // is an indexed range delete, not a full-table scan. Drafts have no
+    // natural expiry (no FK, deleted only on explicit session close), so a
+    // Control device looping PUTs under fresh ids would otherwise grow the
+    // table without bound.
+    "CREATE INDEX idx_drafts_updated_at ON drafts (updated_at_micros);",
 ];
 
 /// Runs every pending migration. Idempotent.

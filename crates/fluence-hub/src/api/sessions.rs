@@ -48,13 +48,30 @@ pub async fn delete_session(
 /// periodic flusher persists it (≤ 1 s loss bound, D-2.6). The text
 /// becomes a `SecretString` at the boundary — P0 never travels bare
 /// through the hub.
+///
+/// Two guards keep an authenticated Control device from exhausting hub
+/// resources (F09): oversized text is rejected before it is ever wrapped
+/// as P0 (a 422 carrying *no* P0), and an overflow of the in-RAM buffer cap
+/// forces an immediate flush so memory use stays bounded.
 pub async fn put_draft(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(draft): Json<Draft>,
-) -> StatusCode {
+) -> Response {
+    // Reject oversized text before it becomes a P0 `SecretString`. `len()`
+    // is the byte length; the error mentions only the limit, never the text.
+    if draft.text.len() > crate::state::MAX_DRAFT_TEXT_BYTES {
+        return problem_response(
+            fluence_protocol::error::ErrorCode::ValidationFailed,
+            Some(format!(
+                "draft text exceeds the {}-byte limit",
+                crate::state::MAX_DRAFT_TEXT_BYTES
+            )),
+        );
+    }
+
     let updated_at_micros = u64::try_from(chrono::Utc::now().timestamp_micros()).unwrap_or(0);
-    state.buffer_draft(
+    let overflow = state.buffer_draft(
         session_id,
         PendingDraft {
             text: SecretString::from(draft.text),
@@ -62,7 +79,14 @@ pub async fn put_draft(
             updated_at_micros,
         },
     );
-    StatusCode::NO_CONTENT
+    // Too many distinct unflushed sessions: drain to disk right away — the
+    // same flush the periodic task does, only brought forward. It never
+    // blocks the keystroke (already buffered); the P0 lands in the encrypted
+    // store within this request instead of accumulating in RAM (F09).
+    if overflow {
+        state.flush_drafts().await;
+    }
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// `GET /api/v1/sessions/{id}/draft`: freshest view — the dirty buffer

@@ -39,7 +39,7 @@ async fn flush_persists_a_buffered_draft() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = test_state(&dir).await;
 
-    state.buffer_draft("s1".into(), draft("bonjour", 7));
+    let _ = state.buffer_draft("s1".into(), draft("bonjour", 7));
     state.flush_drafts().await;
 
     let stored = state
@@ -59,7 +59,7 @@ async fn delete_suppresses_a_never_flushed_draft() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = test_state(&dir).await;
 
-    state.buffer_draft("s1".into(), draft("contenu a oublier", 5));
+    let _ = state.buffer_draft("s1".into(), draft("contenu a oublier", 5));
     state.discard_pending_draft("s1");
     state.flush_drafts().await;
 
@@ -81,9 +81,9 @@ async fn retyping_after_close_reopens_the_session() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = test_state(&dir).await;
 
-    state.buffer_draft("s1".into(), draft("premier jet", 3));
+    let _ = state.buffer_draft("s1".into(), draft("premier jet", 3));
     state.discard_pending_draft("s1");
-    state.buffer_draft("s1".into(), draft("nouveau jet", 4));
+    let _ = state.buffer_draft("s1".into(), draft("nouveau jet", 4));
     state.flush_drafts().await;
 
     let stored = state
@@ -103,7 +103,7 @@ async fn a_buffered_draft_survives_a_store_flush_error() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = test_state(&dir).await;
 
-    state.buffer_draft("s1".into(), draft("acquittee mais pas encore ecrite", 9));
+    let _ = state.buffer_draft("s1".into(), draft("acquittee mais pas encore ecrite", 9));
 
     // Kill the store actor: every handle now errors on use.
     state.store().clone().close().await.expect("close");
@@ -121,7 +121,7 @@ async fn batch_flush_persists_every_session_in_one_pass() {
     let state = test_state(&dir).await;
 
     for i in 0..5 {
-        state.buffer_draft(format!("s{i}"), draft(&format!("draft {i}"), i));
+        let _ = state.buffer_draft(format!("s{i}"), draft(&format!("draft {i}"), i));
     }
     state.flush_drafts().await;
 
