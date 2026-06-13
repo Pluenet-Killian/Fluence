@@ -17,7 +17,8 @@ pre-commit:
       glob: "*.{ts,tsx}"
       run: pnpm exec eslint {staged_files}
     - name: prettier
-      glob: "*.{ts,tsx,js,mjs,json,yml,yaml}"
+      # Même couverture que `pnpm format:check` en CI (html compris).
+      glob: "*.{ts,tsx,js,mjs,json,yml,yaml,html,css}"
       run: pnpm exec prettier --check {staged_files}
     - name: ruff
       root: "ml/"
