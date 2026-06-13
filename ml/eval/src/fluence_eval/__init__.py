@@ -22,6 +22,12 @@ from fluence_eval.metrics import (
     keystroke_savings_pct,
     simulated_wpm,
 )
+from fluence_eval.ngram import (
+    NgramServer,
+    NgramSource,
+    locate_ngram_binary,
+    train_on_corpus,
+)
 from fluence_eval.result import (
     RESULT_SCHEMA_VERSION,
     DialogueResult,
@@ -60,6 +66,8 @@ __all__ = [
     "MetricBundle",
     "Mode",
     "MotorProfile",
+    "NgramServer",
+    "NgramSource",
     "Oracle",
     "Prediction",
     "PredictionSource",
@@ -70,7 +78,9 @@ __all__ = [
     "harmful_rate",
     "keystroke_savings_pct",
     "letter_by_letter_mode",
+    "locate_ngram_binary",
     "oracle_mode",
     "run_corpus",
     "simulated_wpm",
+    "train_on_corpus",
 ]
