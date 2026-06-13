@@ -1,0 +1,9 @@
+[
+  { "topic": "system", "msg": { "k": "system.hello", "v": 1, "topics": ["input", "system"] } },
+  {
+    "topic": "system",
+    "msg": { "k": "system.degraded", "worker": "llm", "state": "down", "restart_count": 2 }
+  },
+  { "topic": "system", "msg": { "k": "system.listening", "enabled": true } },
+  { "topic": "input", "msg": { "k": "sel.commit", "target": "key_e", "method": "dwell", "t": 42 } }
+]

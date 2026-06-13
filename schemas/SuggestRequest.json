@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "ProfileId": {
+      "description": "A user profile (style, keyboards, modalities, voice — SPEC §5.A).",
+      "type": "string"
+    },
+    "SlotId": {
+      "description": "Cancellation slot for `/suggest`: a new request on the same slot\naborts the previous one (SPEC §5.A).",
+      "type": "string"
+    },
+    "SuggestConstraints": {
+      "description": "Generation constraints.",
+      "properties": {
+        "max_chars": {
+          "description": "Hard cap on suggestion length, characters.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "register": {
+          "description": "Register hint (`famille`, `formel`… — free-form, profile-defined).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SuggestMode": {
+      "description": "The four acceleration functions (SPEC §5).",
+      "oneOf": [
+        {
+          "const": "replies",
+          "description": "Replies in context, zero keystrokes.",
+          "type": "string"
+        },
+        {
+          "const": "rephrase",
+          "description": "Noisy/telegraphic fragment → full sentence in the user's style.",
+          "type": "string"
+        },
+        {
+          "const": "expand",
+          "description": "Abbreviation expansion (expert mode).",
+          "type": "string"
+        },
+        {
+          "const": "continue",
+          "description": "Continue the draft.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /sessions/{id}/suggest` request (SPEC §5.A).\n\nWire example:\n`{\"mode\":\"rephrase\",\"draft\":\"veu eau frache ce soir\",\"n\":3,\"slot\":\"main\",`\n`\"constraints\":{\"max_chars\":120,\"register\":\"famille\"},\"style_profile\":\"default\"}`",
+  "properties": {
+    "constraints": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SuggestConstraints"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Optional generation constraints."
+    },
+    "draft": {
+      "description": "Current draft — tolerant to eye-typing noise by design.\n**P0 content** — never logged.",
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "#/$defs/SuggestMode",
+      "description": "Which acceleration function to run."
+    },
+    "n": {
+      "description": "Number of suggestions requested (UI guidance: 3 max, SPEC §7.A).",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "slot": {
+      "$ref": "#/$defs/SlotId",
+      "description": "Cancellation slot: a new request on the same slot aborts the\nprevious one (it receives [`SuggestEvent::Aborted`])."
+    },
+    "style_profile": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProfileId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Style profile to speak *like the person* (SPEC §5)."
+    }
+  },
+  "required": [
+    "mode",
+    "draft",
+    "n",
+    "slot"
+  ],
+  "title": "SuggestRequest",
+  "type": "object"
+}

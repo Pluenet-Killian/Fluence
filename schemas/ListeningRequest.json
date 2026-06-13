@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /asr/listening` request — start/stop partner-speech listening.",
+  "properties": {
+    "consent_token": {
+      "description": "Consent token (required to enable; see [`ConsentResponse`]).",
+      "type": "string"
+    },
+    "enabled": {
+      "description": "Desired listening state.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "enabled",
+    "consent_token"
+  ],
+  "title": "ListeningRequest",
+  "type": "object"
+}

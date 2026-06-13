@@ -1,0 +1,52 @@
+{
+  "$defs": {
+    "HardwareTier": {
+      "description": "Hardware tier (SPEC §3 fleet table).",
+      "oneOf": [
+        {
+          "const": "reduced",
+          "description": "8 GB RAM, no GPU (FLU-REF-1) — latency budgets are defined here.",
+          "type": "string"
+        },
+        {
+          "const": "nominal",
+          "description": "16 GB RAM.",
+          "type": "string"
+        },
+        {
+          "const": "gpu_hub",
+          "description": "≥ 12 GB VRAM GPU hub.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /system/capabilities` — what this installation can do\n(hardware tier §3, available features).",
+  "properties": {
+    "api_version": {
+      "description": "API version served by this hub (`/api/v1`).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "features": {
+      "description": "Available feature flags (`asr`, `voice_cloning`, `embeddings`…).\nFree-form strings: features appear with releases without a contract\nchange; clients test membership, never enumerate.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "tier": {
+      "$ref": "#/$defs/HardwareTier",
+      "description": "Hardware tier from installation profiling (SPEC §3)."
+    }
+  },
+  "required": [
+    "api_version",
+    "tier",
+    "features"
+  ],
+  "title": "CapabilitiesResponse",
+  "type": "object"
+}

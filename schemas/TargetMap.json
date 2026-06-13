@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "Rect": {
+      "description": "Axis-aligned rectangle in viewport pixels, serialized as `[x, y, w, h]`\n(SPEC §4.A wire format).\n\nValidation: all components finite, `w ≥ 0`, `h ≥ 0` (`x`/`y` may be\nnegative — a target can hang off-surface while scrolling).",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    },
+    "SurfaceId": {
+      "description": "A target surface (screen/window) declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "Target": {
+      "description": "One selectable target (SPEC §4.A).",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Unique id within the surface (`key_e`, `sug_1`…)."
+        },
+        "label": {
+          "description": "Human-readable label (the letter of a key, the text of a suggestion).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Normalized"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Linguistic prior in `[0, 1]` modulating adaptive dwell and capped\nmagnetism (SPEC §4.C — never more than 40% of inter-target distance)."
+        },
+        "rect": {
+          "$ref": "#/$defs/Rect",
+          "description": "Bounding box in viewport pixels."
+        },
+        "role": {
+          "$ref": "#/$defs/TargetRole",
+          "description": "Semantic role — drives dwell/magnetism policies."
+        }
+      },
+      "required": [
+        "id",
+        "rect",
+        "role"
+      ],
+      "type": "object"
+    },
+    "TargetId": {
+      "description": "A selectable target declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "TargetRole": {
+      "description": "Semantic role of a target.\n\nUnknown roles deserialize as [`TargetRole::Unknown`] so older hubs\ntolerate newer UIs (forward compatibility).",
+      "oneOf": [
+        {
+          "const": "key",
+          "description": "A keyboard key.",
+          "type": "string"
+        },
+        {
+          "const": "suggestion",
+          "description": "One of the (max 3, fixed-position) suggestion slots (SPEC §7.A).",
+          "type": "string"
+        },
+        {
+          "const": "action",
+          "description": "Any other actionable control (PARLER, tabs, emergency — SPEC §7.A).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Role added by a newer peer; treated with default policies.",
+          "type": "string"
+        }
+      ]
+    },
+    "Viewport": {
+      "description": "Viewport size in pixels.",
+      "properties": {
+        "h": {
+          "description": "Height in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "w": {
+          "description": "Width in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "w",
+        "h"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Full declaration of a UI's selectable targets for one surface\n(`PUT /input/targets`, SPEC §4.A).\n\nWire example: `{\"surface\":\"main\",\"viewport\":{\"w\":1920,\"h\":1080},\"targets\":[…]}`",
+  "properties": {
+    "surface": {
+      "$ref": "#/$defs/SurfaceId",
+      "description": "Surface these targets belong to."
+    },
+    "targets": {
+      "description": "Complete list — replaces any previous declaration for this surface.",
+      "items": {
+        "$ref": "#/$defs/Target"
+      },
+      "type": "array"
+    },
+    "viewport": {
+      "$ref": "#/$defs/Viewport",
+      "description": "Pixel size of the surface viewport (target rects are expressed in it)."
+    }
+  },
+  "required": [
+    "surface",
+    "viewport",
+    "targets"
+  ],
+  "title": "TargetMap",
+  "type": "object"
+}

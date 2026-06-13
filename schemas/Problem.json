@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "description": "Stable error codes (wire: `snake_case`).\n\nMarked `non_exhaustive` and tolerant on input ([`ErrorCode::Unknown`]):\nthe catalogue grows; clients fall back on `status` for codes they do not\nknow.",
+      "oneOf": [
+        {
+          "const": "pairing_window_closed",
+          "description": "Pairing attempted outside an explicitly opened window (SPEC §2.A).",
+          "type": "string"
+        },
+        {
+          "const": "pairing_code_invalid",
+          "description": "Wrong or already-consumed pairing code.",
+          "type": "string"
+        },
+        {
+          "const": "rate_limited",
+          "description": "Too many attempts; retry later (always carried by a 429).",
+          "type": "string"
+        },
+        {
+          "const": "token_missing",
+          "description": "No `X-Fluence-Token` header on a protected route.",
+          "type": "string"
+        },
+        {
+          "const": "token_invalid",
+          "description": "Unknown or revoked device token.",
+          "type": "string"
+        },
+        {
+          "const": "scope_insufficient",
+          "description": "Token scope does not allow this route (SPEC §2.A scope table).",
+          "type": "string"
+        },
+        {
+          "const": "session_not_found",
+          "description": "Unknown session id.",
+          "type": "string"
+        },
+        {
+          "const": "profile_not_found",
+          "description": "Unknown profile id.",
+          "type": "string"
+        },
+        {
+          "const": "memory_item_not_found",
+          "description": "Unknown memory item id.",
+          "type": "string"
+        },
+        {
+          "const": "voice_not_found",
+          "description": "Unknown voice id.",
+          "type": "string"
+        },
+        {
+          "const": "validation_failed",
+          "description": "Request shape was valid JSON but violated an invariant.",
+          "type": "string"
+        },
+        {
+          "const": "asr_consent_required",
+          "description": "ASR control requires a valid consent token (SPEC §5.A).",
+          "type": "string"
+        },
+        {
+          "const": "asr_consent_expired",
+          "description": "The consent token expired (TTL elapsed).",
+          "type": "string"
+        },
+        {
+          "const": "worker_unavailable",
+          "description": "The serving worker is down and no fallback applies. Routes with a\nfallback (n-gram, OS voice) degrade instead of erroring (SPEC §2.C).",
+          "type": "string"
+        },
+        {
+          "const": "internal",
+          "description": "Unexpected internal error (carries no internals in `detail`).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Code added by a newer hub; clients fall back on `status`.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "RFC 9457 problem document, extended with [`ErrorCode`].\n\nThe `type` URI is derived from the code (`urn:fluence:problem:<code>`):\na stable URN that does not depend on owning a domain yet; it may become\na resolvable URL later without changing the codes.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode",
+      "description": "Stable machine-readable code (the catalogue clients switch on)."
+    },
+    "detail": {
+      "description": "Occurrence-specific explanation. **Never P0 content.**",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "instance": {
+      "description": "URI identifying this occurrence (e.g. the request path).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "description": "HTTP status code.",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "title": {
+      "description": "Short human-readable summary, stable per code (English).",
+      "type": "string"
+    },
+    "type": {
+      "description": "Stable problem-type URI (`urn:fluence:problem:<code>`).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code"
+  ],
+  "title": "Problem",
+  "type": "object"
+}

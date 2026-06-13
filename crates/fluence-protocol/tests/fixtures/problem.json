@@ -1,0 +1,8 @@
+{
+  "type": "urn:fluence:problem:scope_insufficient",
+  "title": "Insufficient scope",
+  "status": 403,
+  "detail": "Route requires scope `control`; token has scope `display`.",
+  "instance": "/api/v1/voice/speak",
+  "code": "scope_insufficient"
+}

@@ -92,6 +92,26 @@ jobs:
       - name: Pytest
         run: uv run --directory ml pytest
 
+  contracts:
+    name: contracts (T3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generated artifacts match fluence-protocol
+        run: cargo xtask check-contracts --check
+      - name: OpenAPI lint (spectral)
+        run: pnpm exec spectral lint schemas/openapi.json --ruleset .spectral.yaml --fail-severity warn
+
   cargo-deny:
     name: dependency licenses & advisories
     runs-on: ubuntu-latest

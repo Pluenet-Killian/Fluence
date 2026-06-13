@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "VoiceId": {
+      "description": "An installed voice (SPEC §6).",
+      "type": "string"
+    },
+    "VoiceInfo": {
+      "description": "One installed voice.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/VoiceId",
+          "description": "Stable id to pass to `speak`."
+        },
+        "kind": {
+          "$ref": "#/$defs/VoiceKind",
+          "description": "Which engine family serves it."
+        },
+        "language": {
+          "description": "BCP 47 language tag (`fr-FR`).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name (« Siwis (médium) », « Ma voix »).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "language"
+      ],
+      "type": "object"
+    },
+    "VoiceKind": {
+      "description": "Engine family of a voice.",
+      "oneOf": [
+        {
+          "const": "system",
+          "description": "Operating-system fallback voice (SAPI / espeak-ng) — always\navailable (« une voix, toujours », SPEC §2.C).",
+          "type": "string"
+        },
+        {
+          "const": "piper",
+          "description": "Piper voice (stock or personal fine-tuning, D-6.1).",
+          "type": "string"
+        },
+        {
+          "const": "cloned",
+          "description": "Personal cloned voice, quality stage (F5-TTS, GPU tiers).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Kind added by a newer hub.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /voice/voices` response.",
+  "properties": {
+    "voices": {
+      "description": "Installed voices, ready to speak.",
+      "items": {
+        "$ref": "#/$defs/VoiceInfo"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "voices"
+  ],
+  "title": "VoicesResponse",
+  "type": "object"
+}

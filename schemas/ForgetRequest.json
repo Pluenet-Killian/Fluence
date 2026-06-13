@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /memory/forget` request — semantic forgetting (SPEC §5.B).\n\nTwo-step flow: this returns candidate items; actual deletion goes\nthrough `DELETE /memory/items/{id}` after user confirmation. The\nforget journal records **metadata only**, never the forgotten content.",
+  "properties": {
+    "about": {
+      "description": "What to forget, in the user's words (« tout ce qui concerne X »).\n**P0.**",
+      "type": "string"
+    }
+  },
+  "required": [
+    "about"
+  ],
+  "title": "ForgetRequest",
+  "type": "object"
+}

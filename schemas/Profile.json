@@ -1,0 +1,126 @@
+{
+  "$defs": {
+    "KeyboardLayout": {
+      "description": "Keyboard layouts v1 (SPEC §7.A).",
+      "oneOf": [
+        {
+          "const": "azerty",
+          "description": "AZERTY adapted — familiarity beats optimality (default).",
+          "type": "string"
+        },
+        {
+          "const": "frequency_fr",
+          "description": "French frequency layout (for switch scanning, where order = speed).",
+          "type": "string"
+        },
+        {
+          "const": "abc",
+          "description": "Alphabetical grid.",
+          "type": "string"
+        }
+      ]
+    },
+    "KeyboardPrefs": {
+      "description": "Keyboard preferences (SPEC §7.A).",
+      "properties": {
+        "layout": {
+          "$ref": "#/$defs/KeyboardLayout",
+          "default": "azerty",
+          "description": "Selected layout."
+        },
+        "target_scale": {
+          "description": "Target-size multiplier applied on top of the noise-model sizing\n(§4.C); `None` = automatic.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ProfileId": {
+      "description": "A user profile (style, keyboards, modalities, voice — SPEC §5.A).",
+      "type": "string"
+    },
+    "StyleProfile": {
+      "description": "Style profile (SPEC §7.B: tutoiement ? humour ? façon de dire oui/non ?\nexpressions à soi ?). All fields optional: an empty style is valid.",
+      "properties": {
+        "expressions": {
+          "description": "Signature expressions, injected into the style prompt. **P0.**",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "humor": {
+          "description": "How their humor sounds, in their words (« pince-sans-rire »). **P0.**",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "informal_address": {
+          "description": "Prefers informal address (« tutoiement ») with close people.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "yes_no_style": {
+          "description": "How they typically say yes/no (« ouais », « pas question »). **P0.**",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "VoiceId": {
+      "description": "An installed voice (SPEC §6).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET/PUT /profiles/{id}` — one user profile.",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/ProfileId",
+      "description": "Stable id (`default` for the primary profile)."
+    },
+    "keyboard": {
+      "$ref": "#/$defs/KeyboardPrefs",
+      "default": {
+        "layout": "azerty"
+      },
+      "description": "Keyboard preferences."
+    },
+    "name": {
+      "description": "Display name.",
+      "type": "string"
+    },
+    "style": {
+      "$ref": "#/$defs/StyleProfile",
+      "default": {},
+      "description": "Style — express onboarding answers (SPEC §7.B step 4)."
+    },
+    "voice_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VoiceId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Preferred voice, if chosen."
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "Profile",
+  "type": "object"
+}

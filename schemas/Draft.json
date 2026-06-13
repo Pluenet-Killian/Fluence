@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`PUT /sessions/{id}/draft` — draft synchronization (SPEC §5.A).",
+  "properties": {
+    "caret": {
+      "description": "Caret position, in Unicode scalar values (not bytes), `0 ≤ caret ≤\ntext.chars().count()`.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "text": {
+      "description": "Current draft text. **P0 content** — never logged.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "caret"
+  ],
+  "title": "Draft",
+  "type": "object"
+}

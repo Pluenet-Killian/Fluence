@@ -1,0 +1,8 @@
+{
+  "surface": "main",
+  "viewport": { "w": 1920, "h": 1080 },
+  "targets": [
+    { "id": "key_e", "rect": [10.0, 500.0, 120.0, 90.0], "role": "key", "label": "e" },
+    { "id": "sug_1", "rect": [10.0, 80.0, 600.0, 90.0], "role": "suggestion" }
+  ]
+}

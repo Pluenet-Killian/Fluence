@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "ProsodyTag": {
+      "description": "Prosody tags v1 (D-6.3). Piper realizes them as rate/pitch/volume\npresets; F5-TTS uses the person's own emotional reference recordings.\n\nWire names are English (code convention); UIs label them in the user's\nlanguage (`question` → « Question », `tenderness` → « Tendresse »…).",
+      "oneOf": [
+        {
+          "const": "neutral",
+          "description": "Default delivery.",
+          "type": "string"
+        },
+        {
+          "const": "question",
+          "description": "Rising interrogative contour (shortcut `??`, D-6.3).",
+          "type": "string"
+        },
+        {
+          "const": "exclamation",
+          "description": "Exclamative emphasis (shortcut `!!`).",
+          "type": "string"
+        },
+        {
+          "const": "joy",
+          "description": "Joyful.",
+          "type": "string"
+        },
+        {
+          "const": "tenderness",
+          "description": "Tender, affectionate.",
+          "type": "string"
+        },
+        {
+          "const": "annoyance",
+          "description": "Annoyed.",
+          "type": "string"
+        },
+        {
+          "const": "sadness",
+          "description": "Sad.",
+          "type": "string"
+        },
+        {
+          "const": "whisper",
+          "description": "Whispered.",
+          "type": "string"
+        },
+        {
+          "const": "loud",
+          "description": "Louder delivery.",
+          "type": "string"
+        },
+        {
+          "const": "slow",
+          "description": "Slower delivery.",
+          "type": "string"
+        },
+        {
+          "const": "fast",
+          "description": "Faster delivery.",
+          "type": "string"
+        }
+      ]
+    },
+    "VoiceId": {
+      "description": "An installed voice (SPEC §6).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /voice/speak` request. Response: streamed audio\n(`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).",
+  "properties": {
+    "prosody": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProsodyTag"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Prosody tag applied to the whole utterance (one commit = one tag,\nD-6.3)."
+    },
+    "text": {
+      "description": "Text to vocalize. **P0 content** — never logged.",
+      "type": "string"
+    },
+    "voice_id": {
+      "$ref": "#/$defs/VoiceId",
+      "description": "Which installed voice to use."
+    }
+  },
+  "required": [
+    "text",
+    "voice_id"
+  ],
+  "title": "SpeakRequest",
+  "type": "object"
+}

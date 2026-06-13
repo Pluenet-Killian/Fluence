@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "MemoryAcl": {
+      "description": "Who may see/edit an item (SPEC §5.B). The caregiver space **never**\nsees `private` items, even as admin.",
+      "oneOf": [
+        {
+          "const": "private",
+          "description": "Visible to the user only (the default — intimacy first).",
+          "type": "string"
+        },
+        {
+          "const": "care_visible",
+          "description": "Caregivers may see it.",
+          "type": "string"
+        },
+        {
+          "const": "care_editable",
+          "description": "Caregivers may see and edit it.",
+          "type": "string"
+        }
+      ]
+    },
+    "MemoryItem": {
+      "description": "A memory item (SPEC §5.B data model).",
+      "properties": {
+        "acl": {
+          "$ref": "#/$defs/MemoryAcl",
+          "default": "private",
+          "description": "Access control (default `private`)."
+        },
+        "confidence": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Extraction confidence (1.0 for manual entries)."
+        },
+        "content": {
+          "description": "The remembered content. **P0.**",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "Creation time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/MemoryItemId",
+          "description": "Stable id."
+        },
+        "kind": {
+          "$ref": "#/$defs/MemoryKind",
+          "description": "Item kind."
+        },
+        "last_used_at": {
+          "description": "Last retrieval-injection time, if ever used.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/MemorySource",
+          "description": "How it entered memory."
+        },
+        "tags": {
+          "description": "Free-form tags (`famille`…).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "use_count": {
+          "description": "Retrieval-injection count (drives recency/frequency boost).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "content",
+        "source",
+        "created_at",
+        "use_count",
+        "confidence"
+      ],
+      "type": "object"
+    },
+    "MemoryItemId": {
+      "description": "A personal memory item (SPEC §5.B).",
+      "type": "string"
+    },
+    "MemoryKind": {
+      "description": "Kind of memory item (SPEC §5.B data model).",
+      "oneOf": [
+        {
+          "const": "person",
+          "description": "A person (« Marie, ma fille — vient le mardi »).",
+          "type": "string"
+        },
+        {
+          "const": "place",
+          "description": "A place.",
+          "type": "string"
+        },
+        {
+          "const": "routine",
+          "description": "A recurring routine.",
+          "type": "string"
+        },
+        {
+          "const": "anecdote",
+          "description": "A dated anecdote.",
+          "type": "string"
+        },
+        {
+          "const": "phrase",
+          "description": "A recurring phrase — also a zero-latency suggestion cache (§5.B).",
+          "type": "string"
+        },
+        {
+          "const": "fact",
+          "description": "A standalone fact.",
+          "type": "string"
+        },
+        {
+          "const": "conversation_summary",
+          "description": "A summary persisted after raw-conversation purge (30 days).",
+          "type": "string"
+        }
+      ]
+    },
+    "MemorySource": {
+      "description": "How an item entered memory.",
+      "oneOf": [
+        {
+          "const": "manual",
+          "description": "Entered by the user (or caregiver per ACL) in « Ma mémoire ».",
+          "type": "string"
+        },
+        {
+          "const": "learned",
+          "description": "Extracted by the post-conversation job, then user-confirmed.",
+          "type": "string"
+        },
+        {
+          "const": "imported",
+          "description": "Imported from contacts (vCard/CSV) or calendar (ICS), locally.",
+          "type": "string"
+        }
+      ]
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /memory/forget` response: candidates to confirm.",
+  "properties": {
+    "items": {
+      "description": "Items the semantic search proposes to forget.",
+      "items": {
+        "$ref": "#/$defs/MemoryItem"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "ForgetCandidates",
+  "type": "object"
+}

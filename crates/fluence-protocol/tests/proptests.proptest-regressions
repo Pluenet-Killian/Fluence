@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 07e876f4f1a0bfbaf395545fc6ca3e8e945f56f081ce771ea5b8d128a95f8534 # shrinks to sample = PointerSample { t: TimestampMicros(0), src: SourceId("a:a"), x: Normalized(0.0), y: Normalized(0.0), conf: Normalized(0.0), pose: Some(HeadPose { yaw: 171.23482450299593, pitch: 0.0, roll: 0.0 }) }
+cc d82c8fb861477c4be42e12e9491abe4149a913d49e160d8a2a5070f809d9becd # shrinks to event = Dwell { target: TargetId("_"), progress: Normalized(0.9111651984388395), eta_ms: 0 }

@@ -1,0 +1,7 @@
+{
+  "k": "sw",
+  "t": 123456789,
+  "src": "switch:ble0",
+  "btn": 1,
+  "state": "down"
+}

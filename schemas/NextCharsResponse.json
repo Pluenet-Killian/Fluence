@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "CharProb": {
+      "description": "Probability of one next character.",
+      "properties": {
+        "ch": {
+          "description": "The character (one Unicode scalar value).",
+          "maxLength": 1,
+          "minLength": 1,
+          "type": "string"
+        },
+        "p": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Its probability in `[0, 1]`."
+        }
+      },
+      "required": [
+        "ch",
+        "p"
+      ],
+      "type": "object"
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /sessions/{id}/next-chars?prefix=` response — next-character\ndistribution on the warm KV (SPEC §5.A). Never triggers a full\ngeneration; feeds adaptive dwell, weighted scanning and Dasher.",
+  "properties": {
+    "dist": {
+      "description": "Character probabilities, descending. BPE→char aggregation hub-side.",
+      "items": {
+        "$ref": "#/$defs/CharProb"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "dist"
+  ],
+  "title": "NextCharsResponse",
+  "type": "object"
+}

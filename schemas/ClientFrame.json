@@ -1,0 +1,350 @@
+{
+  "$defs": {
+    "HeadPose": {
+      "description": "Head pose in degrees. Free-range (sensor-dependent); fusion treats it as\na relative offset signal (« regard désigne, tête affine », SPEC §4.C).",
+      "properties": {
+        "pitch": {
+          "description": "Rotation around the lateral axis, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "roll": {
+          "description": "Rotation around the frontal axis, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "yaw": {
+          "description": "Rotation around the vertical axis, degrees.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "yaw",
+        "pitch",
+        "roll"
+      ],
+      "type": "object"
+    },
+    "InputClientMessage": {
+      "description": "Client → hub messages on the `input` topic: sensor samples from remote\nclients (e.g. a tablet running `MediaPipe` in-browser, SPEC §4.A) and\ntarget patches from UIs. Hub-managed drivers bypass this entirely\n(in-process direct path).",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PointerSample",
+          "description": "A pointing sample.",
+          "properties": {
+            "k": {
+              "const": "ptr",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/SwitchEvent",
+          "description": "A switch transition.",
+          "properties": {
+            "k": {
+              "const": "sw",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/TargetMapPatch",
+          "description": "An incremental target update.",
+          "properties": {
+            "k": {
+              "const": "targets.patch",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "PointerSample": {
+      "description": "One pointing sample from a source, at the sensor's native rate\n(30–120 Hz). Coordinates are normalized to the surface (SPEC §4.A).\n\nWire example (SPEC §4.A):\n`{\"k\":\"ptr\",\"t\":123456789,\"src\":\"gaze:webcam0\",\"x\":0.41,\"y\":0.77,\"conf\":0.86,\"pose\":{...}}`",
+      "properties": {
+        "conf": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Source confidence in `[0, 1]` (drives fusion weighting, SPEC §4.C)."
+        },
+        "pose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeadPose"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Head pose, when the source provides one."
+        },
+        "src": {
+          "$ref": "#/$defs/SourceId",
+          "description": "Producing source (`gaze:webcam0`, `head:opentrack0`…)."
+        },
+        "t": {
+          "$ref": "#/$defs/TimestampMicros",
+          "description": "Source timestamp, microseconds, monotonic per source."
+        },
+        "x": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Horizontal position in `[0, 1]`, relative to the surface."
+        },
+        "y": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Vertical position in `[0, 1]`, relative to the surface."
+        }
+      },
+      "required": [
+        "t",
+        "src",
+        "x",
+        "y",
+        "conf"
+      ],
+      "type": "object"
+    },
+    "Rect": {
+      "description": "Axis-aligned rectangle in viewport pixels, serialized as `[x, y, w, h]`\n(SPEC §4.A wire format).\n\nValidation: all components finite, `w ≥ 0`, `h ≥ 0` (`x`/`y` may be\nnegative — a target can hang off-surface while scrolling).",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    },
+    "SourceId": {
+      "description": "Input source, formatted `kind:instance` by convention\n(`gaze:webcam0`, `switch:ble0` — SPEC §4.A). The format is a\nconvention, not a parsing contract.",
+      "type": "string"
+    },
+    "SurfaceId": {
+      "description": "A target surface (screen/window) declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "SwitchEvent": {
+      "description": "A physical switch transition (SPEC §4.A).\n\nWire example: `{\"k\":\"sw\",\"t\":123456789,\"src\":\"switch:ble0\",\"btn\":1,\"state\":\"down\"}`",
+      "properties": {
+        "btn": {
+          "description": "Button index on the device, starting at 1.",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "src": {
+          "$ref": "#/$defs/SourceId",
+          "description": "Producing source (`switch:ble0`, `switch:usb1`…)."
+        },
+        "state": {
+          "$ref": "#/$defs/SwitchState",
+          "description": "Transition direction."
+        },
+        "t": {
+          "$ref": "#/$defs/TimestampMicros",
+          "description": "Source timestamp, microseconds, monotonic per source."
+        }
+      },
+      "required": [
+        "t",
+        "src",
+        "btn",
+        "state"
+      ],
+      "type": "object"
+    },
+    "SwitchState": {
+      "description": "Switch transition direction.",
+      "oneOf": [
+        {
+          "const": "down",
+          "description": "Pressed.",
+          "type": "string"
+        },
+        {
+          "const": "up",
+          "description": "Released.",
+          "type": "string"
+        }
+      ]
+    },
+    "Target": {
+      "description": "One selectable target (SPEC §4.A).",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Unique id within the surface (`key_e`, `sug_1`…)."
+        },
+        "label": {
+          "description": "Human-readable label (the letter of a key, the text of a suggestion).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Normalized"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Linguistic prior in `[0, 1]` modulating adaptive dwell and capped\nmagnetism (SPEC §4.C — never more than 40% of inter-target distance)."
+        },
+        "rect": {
+          "$ref": "#/$defs/Rect",
+          "description": "Bounding box in viewport pixels."
+        },
+        "role": {
+          "$ref": "#/$defs/TargetRole",
+          "description": "Semantic role — drives dwell/magnetism policies."
+        }
+      },
+      "required": [
+        "id",
+        "rect",
+        "role"
+      ],
+      "type": "object"
+    },
+    "TargetId": {
+      "description": "A selectable target declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "TargetMapPatch": {
+      "description": "Incremental update of a surface's targets (WebSocket `input` topic).\n\nApplication order: `upsert` (insert or replace by id), then `remove`.\nA `viewport` change invalidates nothing else — rects of untouched targets\nare assumed already expressed in the new viewport.",
+      "properties": {
+        "remove": {
+          "description": "Target ids to remove.",
+          "items": {
+            "$ref": "#/$defs/TargetId"
+          },
+          "type": "array"
+        },
+        "surface": {
+          "$ref": "#/$defs/SurfaceId",
+          "description": "Surface to patch."
+        },
+        "upsert": {
+          "description": "Targets to insert or replace (matched by `id`).",
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "type": "array"
+        },
+        "viewport": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Viewport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "New viewport size, if it changed."
+        }
+      },
+      "required": [
+        "surface"
+      ],
+      "type": "object"
+    },
+    "TargetRole": {
+      "description": "Semantic role of a target.\n\nUnknown roles deserialize as [`TargetRole::Unknown`] so older hubs\ntolerate newer UIs (forward compatibility).",
+      "oneOf": [
+        {
+          "const": "key",
+          "description": "A keyboard key.",
+          "type": "string"
+        },
+        {
+          "const": "suggestion",
+          "description": "One of the (max 3, fixed-position) suggestion slots (SPEC §7.A).",
+          "type": "string"
+        },
+        {
+          "const": "action",
+          "description": "Any other actionable control (PARLER, tabs, emergency — SPEC §7.A).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Role added by a newer peer; treated with default policies.",
+          "type": "string"
+        }
+      ]
+    },
+    "TimestampMicros": {
+      "description": "Microseconds since an arbitrary epoch, monotonic **per source**\n(SPEC §4.A).\n\nMonotonicity is a stream property the hub enforces at ingestion; the type\nitself only carries the value.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "Viewport": {
+      "description": "Viewport size in pixels.",
+      "properties": {
+        "h": {
+          "description": "Height in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "w": {
+          "description": "Width in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "w",
+        "h"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Client → hub frame.",
+  "oneOf": [
+    {
+      "description": "Input-topic message (sensor sample or target patch).",
+      "properties": {
+        "msg": {
+          "$ref": "#/$defs/InputClientMessage"
+        },
+        "topic": {
+          "const": "input",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "msg"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ClientFrame"
+}

@@ -1,0 +1,3464 @@
+{
+  "components": {
+    "schemas": {
+      "AbortReason": {
+        "description": "Cancellation causes.",
+        "oneOf": [
+          {
+            "const": "superseded",
+            "description": "A newer request arrived on the same slot.",
+            "type": "string"
+          },
+          {
+            "const": "session_closed",
+            "description": "The session was deleted mid-generation.",
+            "type": "string"
+          },
+          {
+            "const": "shutdown",
+            "description": "The hub is shutting down.",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Reason added by a newer hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "CapabilitiesResponse": {
+        "description": "`GET /system/capabilities` — what this installation can do\n(hardware tier §3, available features).",
+        "properties": {
+          "api_version": {
+            "description": "API version served by this hub (`/api/v1`).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "features": {
+            "description": "Available feature flags (`asr`, `voice_cloning`, `embeddings`…).\nFree-form strings: features appear with releases without a contract\nchange; clients test membership, never enumerate.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/HardwareTier",
+            "description": "Hardware tier from installation profiling (SPEC §3)."
+          }
+        },
+        "required": [
+          "api_version",
+          "tier",
+          "features"
+        ],
+        "type": "object"
+      },
+      "CharProb": {
+        "description": "Probability of one next character.",
+        "properties": {
+          "ch": {
+            "description": "The character (one Unicode scalar value).",
+            "maxLength": 1,
+            "minLength": 1,
+            "type": "string"
+          },
+          "p": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Its probability in `[0, 1]`."
+          }
+        },
+        "required": [
+          "ch",
+          "p"
+        ],
+        "type": "object"
+      },
+      "ClientFrame": {
+        "description": "Client → hub frame.",
+        "oneOf": [
+          {
+            "description": "Input-topic message (sensor sample or target patch).",
+            "properties": {
+              "msg": {
+                "$ref": "#/components/schemas/InputClientMessage"
+              },
+              "topic": {
+                "const": "input",
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic",
+              "msg"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "CommitMethod": {
+        "description": "How a selection was committed.\n\nUnknown methods deserialize as [`CommitMethod::Unknown`] (forward\ncompatibility — clients ignore what they don't know).",
+        "oneOf": [
+          {
+            "const": "dwell",
+            "description": "Dwell timer completed on a fixation.",
+            "type": "string"
+          },
+          {
+            "const": "switch",
+            "description": "Validated by a physical switch.",
+            "type": "string"
+          },
+          {
+            "const": "scan",
+            "description": "Selected via scanning.",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Method added by a newer hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "ConsentResponse": {
+        "description": "`POST /asr/consent` — obtain a consent token via an explicit UI action.\nThe action is journaled locally (who, when, which device).",
+        "properties": {
+          "consent_token": {
+            "description": "Token to pass to `POST /asr/listening`.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When this token stops being accepted.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consent_token",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "CreateMemoryItem": {
+        "description": "`POST /memory/items` request.",
+        "properties": {
+          "acl": {
+            "$ref": "#/components/schemas/MemoryAcl",
+            "default": "private",
+            "description": "Access control (default `private`)."
+          },
+          "content": {
+            "description": "The content to remember. **P0.**",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind",
+            "description": "Item kind."
+          },
+          "tags": {
+            "description": "Free-form tags.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "content"
+        ],
+        "type": "object"
+      },
+      "CreateSessionResponse": {
+        "description": "`POST /sessions` response.",
+        "properties": {
+          "session_id": {
+            "$ref": "#/components/schemas/SessionId",
+            "description": "Newly created session."
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "type": "object"
+      },
+      "DeviceKind": {
+        "description": "Kind of device requesting pairing — drives naming and display in the\ncaregiver space. Unknown kinds are tolerated.",
+        "oneOf": [
+          {
+            "const": "desktop",
+            "description": "Desktop or laptop computer.",
+            "type": "string"
+          },
+          {
+            "const": "tablet",
+            "description": "Tablet.",
+            "type": "string"
+          },
+          {
+            "const": "phone",
+            "description": "Phone.",
+            "type": "string"
+          },
+          {
+            "const": "display",
+            "description": "Dedicated partner-facing display.",
+            "type": "string"
+          },
+          {
+            "const": "cli",
+            "description": "Command-line tool.",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Kind added by a newer client.",
+            "type": "string"
+          }
+        ]
+      },
+      "Draft": {
+        "description": "`PUT /sessions/{id}/draft` — draft synchronization (SPEC §5.A).",
+        "properties": {
+          "caret": {
+            "description": "Caret position, in Unicode scalar values (not bytes), `0 ≤ caret ≤\ntext.chars().count()`.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "text": {
+            "description": "Current draft text. **P0 content** — never logged.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "caret"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "description": "Stable error codes (wire: `snake_case`).\n\nMarked `non_exhaustive` and tolerant on input ([`ErrorCode::Unknown`]):\nthe catalogue grows; clients fall back on `status` for codes they do not\nknow.",
+        "oneOf": [
+          {
+            "const": "pairing_window_closed",
+            "description": "Pairing attempted outside an explicitly opened window (SPEC §2.A).",
+            "type": "string"
+          },
+          {
+            "const": "pairing_code_invalid",
+            "description": "Wrong or already-consumed pairing code.",
+            "type": "string"
+          },
+          {
+            "const": "rate_limited",
+            "description": "Too many attempts; retry later (always carried by a 429).",
+            "type": "string"
+          },
+          {
+            "const": "token_missing",
+            "description": "No `X-Fluence-Token` header on a protected route.",
+            "type": "string"
+          },
+          {
+            "const": "token_invalid",
+            "description": "Unknown or revoked device token.",
+            "type": "string"
+          },
+          {
+            "const": "scope_insufficient",
+            "description": "Token scope does not allow this route (SPEC §2.A scope table).",
+            "type": "string"
+          },
+          {
+            "const": "session_not_found",
+            "description": "Unknown session id.",
+            "type": "string"
+          },
+          {
+            "const": "profile_not_found",
+            "description": "Unknown profile id.",
+            "type": "string"
+          },
+          {
+            "const": "memory_item_not_found",
+            "description": "Unknown memory item id.",
+            "type": "string"
+          },
+          {
+            "const": "voice_not_found",
+            "description": "Unknown voice id.",
+            "type": "string"
+          },
+          {
+            "const": "validation_failed",
+            "description": "Request shape was valid JSON but violated an invariant.",
+            "type": "string"
+          },
+          {
+            "const": "asr_consent_required",
+            "description": "ASR control requires a valid consent token (SPEC §5.A).",
+            "type": "string"
+          },
+          {
+            "const": "asr_consent_expired",
+            "description": "The consent token expired (TTL elapsed).",
+            "type": "string"
+          },
+          {
+            "const": "worker_unavailable",
+            "description": "The serving worker is down and no fallback applies. Routes with a\nfallback (n-gram, OS voice) degrade instead of erroring (SPEC §2.C).",
+            "type": "string"
+          },
+          {
+            "const": "internal",
+            "description": "Unexpected internal error (carries no internals in `detail`).",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Code added by a newer hub; clients fall back on `status`.",
+            "type": "string"
+          }
+        ]
+      },
+      "ForgetCandidates": {
+        "description": "`POST /memory/forget` response: candidates to confirm.",
+        "properties": {
+          "items": {
+            "description": "Items the semantic search proposes to forget.",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ForgetRequest": {
+        "description": "`POST /memory/forget` request — semantic forgetting (SPEC §5.B).\n\nTwo-step flow: this returns candidate items; actual deletion goes\nthrough `DELETE /memory/items/{id}` after user confirmation. The\nforget journal records **metadata only**, never the forgotten content.",
+        "properties": {
+          "about": {
+            "description": "What to forget, in the user's words (« tout ce qui concerne X »).\n**P0.**",
+            "type": "string"
+          }
+        },
+        "required": [
+          "about"
+        ],
+        "type": "object"
+      },
+      "HardwareTier": {
+        "description": "Hardware tier (SPEC §3 fleet table).",
+        "oneOf": [
+          {
+            "const": "reduced",
+            "description": "8 GB RAM, no GPU (FLU-REF-1) — latency budgets are defined here.",
+            "type": "string"
+          },
+          {
+            "const": "nominal",
+            "description": "16 GB RAM.",
+            "type": "string"
+          },
+          {
+            "const": "gpu_hub",
+            "description": "≥ 12 GB VRAM GPU hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "HeadPose": {
+        "description": "Head pose in degrees. Free-range (sensor-dependent); fusion treats it as\na relative offset signal (« regard désigne, tête affine », SPEC §4.C).",
+        "properties": {
+          "pitch": {
+            "description": "Rotation around the lateral axis, degrees.",
+            "format": "double",
+            "type": "number"
+          },
+          "roll": {
+            "description": "Rotation around the frontal axis, degrees.",
+            "format": "double",
+            "type": "number"
+          },
+          "yaw": {
+            "description": "Rotation around the vertical axis, degrees.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "yaw",
+          "pitch",
+          "roll"
+        ],
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "`GET /system/health` — worker states, loaded models, rolling latencies\n(SPEC §5.A, D-3.3).",
+        "properties": {
+          "latencies": {
+            "description": "Rolling p50/p95 per latency class (D-3.3).",
+            "items": {
+              "$ref": "#/components/schemas/LatencyStat"
+            },
+            "type": "array"
+          },
+          "started_at": {
+            "description": "Hub start time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "Hub semantic version (`CARGO_PKG_VERSION`).",
+            "type": "string"
+          },
+          "workers": {
+            "description": "One entry per supervised worker.",
+            "items": {
+              "$ref": "#/components/schemas/WorkerHealth"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "version",
+          "started_at",
+          "workers",
+          "latencies"
+        ],
+        "type": "object"
+      },
+      "InputClientMessage": {
+        "description": "Client → hub messages on the `input` topic: sensor samples from remote\nclients (e.g. a tablet running `MediaPipe` in-browser, SPEC §4.A) and\ntarget patches from UIs. Hub-managed drivers bypass this entirely\n(in-process direct path).",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PointerSample",
+            "description": "A pointing sample.",
+            "properties": {
+              "k": {
+                "const": "ptr",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k"
+            ],
+            "type": "object"
+          },
+          {
+            "$ref": "#/components/schemas/SwitchEvent",
+            "description": "A switch transition.",
+            "properties": {
+              "k": {
+                "const": "sw",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k"
+            ],
+            "type": "object"
+          },
+          {
+            "$ref": "#/components/schemas/TargetMapPatch",
+            "description": "An incremental target update.",
+            "properties": {
+              "k": {
+                "const": "targets.patch",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "KeyboardLayout": {
+        "description": "Keyboard layouts v1 (SPEC §7.A).",
+        "oneOf": [
+          {
+            "const": "azerty",
+            "description": "AZERTY adapted — familiarity beats optimality (default).",
+            "type": "string"
+          },
+          {
+            "const": "frequency_fr",
+            "description": "French frequency layout (for switch scanning, where order = speed).",
+            "type": "string"
+          },
+          {
+            "const": "abc",
+            "description": "Alphabetical grid.",
+            "type": "string"
+          }
+        ]
+      },
+      "KeyboardPrefs": {
+        "description": "Keyboard preferences (SPEC §7.A).",
+        "properties": {
+          "layout": {
+            "$ref": "#/components/schemas/KeyboardLayout",
+            "default": "azerty",
+            "description": "Selected layout."
+          },
+          "target_scale": {
+            "description": "Target-size multiplier applied on top of the noise-model sizing\n(§4.C); `None` = automatic.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "LatencyClass": {
+        "description": "Latency classes with contractual budgets (SPEC §5.A table).",
+        "oneOf": [
+          {
+            "const": "next_chars",
+            "description": "`next-chars` on a warm KV (budget p50 20 ms / p95 50 ms).",
+            "type": "string"
+          },
+          {
+            "const": "suggest_first_delta",
+            "description": "First displayable suggest delta (300 / 600 ms).",
+            "type": "string"
+          },
+          {
+            "const": "suggest_complete",
+            "description": "Three complete suggestions (1.2 / 2.5 s).",
+            "type": "string"
+          },
+          {
+            "const": "speak_first_audio",
+            "description": "First audio sample of `speak` (200 / 400 ms).",
+            "type": "string"
+          },
+          {
+            "const": "turns",
+            "description": "Turn ingestion incl. background KV re-warm (100 / 250 ms).",
+            "type": "string"
+          },
+          {
+            "const": "input_decision",
+            "description": "Input sample → selection decision (5 / 15 ms).",
+            "type": "string"
+          }
+        ]
+      },
+      "LatencyStat": {
+        "description": "Rolling latency statistics for one request class.",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/LatencyClass",
+            "description": "Measured class."
+          },
+          "p50_ms": {
+            "description": "Median, milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "p95_ms": {
+            "description": "95th percentile, milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "class",
+          "p50_ms",
+          "p95_ms"
+        ],
+        "type": "object"
+      },
+      "ListeningRequest": {
+        "description": "`POST /asr/listening` request — start/stop partner-speech listening.",
+        "properties": {
+          "consent_token": {
+            "description": "Consent token (required to enable; see [`ConsentResponse`]).",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Desired listening state.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "consent_token"
+        ],
+        "type": "object"
+      },
+      "MemoryAcl": {
+        "description": "Who may see/edit an item (SPEC §5.B). The caregiver space **never**\nsees `private` items, even as admin.",
+        "oneOf": [
+          {
+            "const": "private",
+            "description": "Visible to the user only (the default — intimacy first).",
+            "type": "string"
+          },
+          {
+            "const": "care_visible",
+            "description": "Caregivers may see it.",
+            "type": "string"
+          },
+          {
+            "const": "care_editable",
+            "description": "Caregivers may see and edit it.",
+            "type": "string"
+          }
+        ]
+      },
+      "MemoryItem": {
+        "description": "A memory item (SPEC §5.B data model).",
+        "properties": {
+          "acl": {
+            "$ref": "#/components/schemas/MemoryAcl",
+            "default": "private",
+            "description": "Access control (default `private`)."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Extraction confidence (1.0 for manual entries)."
+          },
+          "content": {
+            "description": "The remembered content. **P0.**",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Creation time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/MemoryItemId",
+            "description": "Stable id."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind",
+            "description": "Item kind."
+          },
+          "last_used_at": {
+            "description": "Last retrieval-injection time, if ever used.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/MemorySource",
+            "description": "How it entered memory."
+          },
+          "tags": {
+            "description": "Free-form tags (`famille`…).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "use_count": {
+            "description": "Retrieval-injection count (drives recency/frequency boost).",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "content",
+          "source",
+          "created_at",
+          "use_count",
+          "confidence"
+        ],
+        "type": "object"
+      },
+      "MemoryItemId": {
+        "description": "A personal memory item (SPEC §5.B).",
+        "type": "string"
+      },
+      "MemoryKind": {
+        "description": "Kind of memory item (SPEC §5.B data model).",
+        "oneOf": [
+          {
+            "const": "person",
+            "description": "A person (« Marie, ma fille — vient le mardi »).",
+            "type": "string"
+          },
+          {
+            "const": "place",
+            "description": "A place.",
+            "type": "string"
+          },
+          {
+            "const": "routine",
+            "description": "A recurring routine.",
+            "type": "string"
+          },
+          {
+            "const": "anecdote",
+            "description": "A dated anecdote.",
+            "type": "string"
+          },
+          {
+            "const": "phrase",
+            "description": "A recurring phrase — also a zero-latency suggestion cache (§5.B).",
+            "type": "string"
+          },
+          {
+            "const": "fact",
+            "description": "A standalone fact.",
+            "type": "string"
+          },
+          {
+            "const": "conversation_summary",
+            "description": "A summary persisted after raw-conversation purge (30 days).",
+            "type": "string"
+          }
+        ]
+      },
+      "MemorySearchResponse": {
+        "description": "`GET /memory/search?q=` response.",
+        "properties": {
+          "items": {
+            "description": "Matching items, best first (hybrid BM25 + vector, RRF fusion §5.B),\nfiltered by the caller's ACL.",
+            "items": {
+              "$ref": "#/components/schemas/MemoryItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "MemorySource": {
+        "description": "How an item entered memory.",
+        "oneOf": [
+          {
+            "const": "manual",
+            "description": "Entered by the user (or caregiver per ACL) in « Ma mémoire ».",
+            "type": "string"
+          },
+          {
+            "const": "learned",
+            "description": "Extracted by the post-conversation job, then user-confirmed.",
+            "type": "string"
+          },
+          {
+            "const": "imported",
+            "description": "Imported from contacts (vCard/CSV) or calendar (ICS), locally.",
+            "type": "string"
+          }
+        ]
+      },
+      "ModelId": {
+        "description": "A model from the registry (SPEC D-3.2).",
+        "type": "string"
+      },
+      "ModelRef": {
+        "description": "A model from the registry, pinned by version (D-3.2: a model never\nchanges silently).",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ModelId",
+            "description": "Registry id."
+          },
+          "version": {
+            "description": "Manifest version.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "type": "object"
+      },
+      "NextCharsResponse": {
+        "description": "`GET /sessions/{id}/next-chars?prefix=` response — next-character\ndistribution on the warm KV (SPEC §5.A). Never triggers a full\ngeneration; feeds adaptive dwell, weighted scanning and Dasher.",
+        "properties": {
+          "dist": {
+            "description": "Character probabilities, descending. BPE→char aggregation hub-side.",
+            "items": {
+              "$ref": "#/components/schemas/CharProb"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "dist"
+        ],
+        "type": "object"
+      },
+      "Normalized": {
+        "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+        "format": "double",
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+      },
+      "PairInfo": {
+        "description": "`GET /pair/info` — what a pairing screen needs to display (no token).",
+        "properties": {
+          "api_version": {
+            "description": "API version served by this hub.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ca_fingerprint": {
+            "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).",
+            "type": "string"
+          },
+          "household_name": {
+            "description": "Household name announced over mDNS (§2.A).",
+            "type": "string"
+          },
+          "pairing_open": {
+            "description": "Whether a pairing window is currently open.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "api_version",
+          "household_name",
+          "ca_fingerprint",
+          "pairing_open"
+        ],
+        "type": "object"
+      },
+      "PairRequest": {
+        "description": "`POST /pair` request (no token; only valid while the window is open).",
+        "properties": {
+          "code": {
+            "description": "8-digit single-use code shown on the main screen.",
+            "type": "string"
+          },
+          "device_kind": {
+            "$ref": "#/components/schemas/DeviceKind",
+            "description": "What kind of device this is."
+          },
+          "device_name": {
+            "description": "Human name for the device (« Tablette du lit »).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "device_name",
+          "device_kind"
+        ],
+        "type": "object"
+      },
+      "PairResponse": {
+        "description": "`POST /pair` response: everything the device needs to talk to the hub.",
+        "properties": {
+          "ca_cert": {
+            "description": "Local CA certificate (PEM) for TLS pinning (home mode, §2.A).",
+            "type": "string"
+          },
+          "device_token": {
+            "description": "Per-device revocable token (header `X-Fluence-Token`).",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope",
+            "description": "Scope granted by this pairing window."
+          }
+        },
+        "required": [
+          "ca_cert",
+          "device_token",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "PendingMemoryItem": {
+        "description": "A candidate item in the validation queue.",
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Extraction confidence."
+          },
+          "content": {
+            "description": "Proposed content. **P0.**",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/MemoryItemId",
+            "description": "Queue id (used in `POST /memory/pending/{id}/accept|reject`)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MemoryKind",
+            "description": "Proposed kind."
+          },
+          "proposed_at": {
+            "description": "When the extraction job proposed it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why it was proposed (« phrase répétée 3× cette semaine »). Shown to\nthe user; stored encrypted like everything else. **P0.**",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Proposed tags.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "content",
+          "reason",
+          "confidence",
+          "proposed_at"
+        ],
+        "type": "object"
+      },
+      "PendingResponse": {
+        "description": "`GET /memory/pending` response — the validation queue (SPEC §5.B):\ncandidates extracted after conversations, awaiting accept/reject.",
+        "properties": {
+          "items": {
+            "description": "Candidates awaiting user decision.",
+            "items": {
+              "$ref": "#/components/schemas/PendingMemoryItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "PointerSample": {
+        "description": "One pointing sample from a source, at the sensor's native rate\n(30–120 Hz). Coordinates are normalized to the surface (SPEC §4.A).\n\nWire example (SPEC §4.A):\n`{\"k\":\"ptr\",\"t\":123456789,\"src\":\"gaze:webcam0\",\"x\":0.41,\"y\":0.77,\"conf\":0.86,\"pose\":{...}}`",
+        "properties": {
+          "conf": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Source confidence in `[0, 1]` (drives fusion weighting, SPEC §4.C)."
+          },
+          "pose": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeadPose"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Head pose, when the source provides one."
+          },
+          "src": {
+            "$ref": "#/components/schemas/SourceId",
+            "description": "Producing source (`gaze:webcam0`, `head:opentrack0`…)."
+          },
+          "t": {
+            "$ref": "#/components/schemas/TimestampMicros",
+            "description": "Source timestamp, microseconds, monotonic per source."
+          },
+          "x": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Horizontal position in `[0, 1]`, relative to the surface."
+          },
+          "y": {
+            "$ref": "#/components/schemas/Normalized",
+            "description": "Vertical position in `[0, 1]`, relative to the surface."
+          }
+        },
+        "required": [
+          "t",
+          "src",
+          "x",
+          "y",
+          "conf"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "description": "RFC 9457 problem document, extended with [`ErrorCode`].\n\nThe `type` URI is derived from the code (`urn:fluence:problem:<code>`):\na stable URN that does not depend on owning a domain yet; it may become\na resolvable URL later without changing the codes.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode",
+            "description": "Stable machine-readable code (the catalogue clients switch on)."
+          },
+          "detail": {
+            "description": "Occurrence-specific explanation. **Never P0 content.**",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "description": "URI identifying this occurrence (e.g. the request path).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "HTTP status code.",
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short human-readable summary, stable per code (English).",
+            "type": "string"
+          },
+          "type": {
+            "description": "Stable problem-type URI (`urn:fluence:problem:<code>`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "type": "object"
+      },
+      "Profile": {
+        "description": "`GET/PUT /profiles/{id}` — one user profile.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ProfileId",
+            "description": "Stable id (`default` for the primary profile)."
+          },
+          "keyboard": {
+            "$ref": "#/components/schemas/KeyboardPrefs",
+            "default": {
+              "layout": "azerty"
+            },
+            "description": "Keyboard preferences."
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "style": {
+            "$ref": "#/components/schemas/StyleProfile",
+            "default": {},
+            "description": "Style — express onboarding answers (SPEC §7.B step 4)."
+          },
+          "voice_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Preferred voice, if chosen."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ProfileId": {
+        "description": "A user profile (style, keyboards, modalities, voice — SPEC §5.A).",
+        "type": "string"
+      },
+      "ProsodyTag": {
+        "description": "Prosody tags v1 (D-6.3). Piper realizes them as rate/pitch/volume\npresets; F5-TTS uses the person's own emotional reference recordings.\n\nWire names are English (code convention); UIs label them in the user's\nlanguage (`question` → « Question », `tenderness` → « Tendresse »…).",
+        "oneOf": [
+          {
+            "const": "neutral",
+            "description": "Default delivery.",
+            "type": "string"
+          },
+          {
+            "const": "question",
+            "description": "Rising interrogative contour (shortcut `??`, D-6.3).",
+            "type": "string"
+          },
+          {
+            "const": "exclamation",
+            "description": "Exclamative emphasis (shortcut `!!`).",
+            "type": "string"
+          },
+          {
+            "const": "joy",
+            "description": "Joyful.",
+            "type": "string"
+          },
+          {
+            "const": "tenderness",
+            "description": "Tender, affectionate.",
+            "type": "string"
+          },
+          {
+            "const": "annoyance",
+            "description": "Annoyed.",
+            "type": "string"
+          },
+          {
+            "const": "sadness",
+            "description": "Sad.",
+            "type": "string"
+          },
+          {
+            "const": "whisper",
+            "description": "Whispered.",
+            "type": "string"
+          },
+          {
+            "const": "loud",
+            "description": "Louder delivery.",
+            "type": "string"
+          },
+          {
+            "const": "slow",
+            "description": "Slower delivery.",
+            "type": "string"
+          },
+          {
+            "const": "fast",
+            "description": "Faster delivery.",
+            "type": "string"
+          }
+        ]
+      },
+      "Rect": {
+        "description": "Axis-aligned rectangle in viewport pixels, serialized as `[x, y, w, h]`\n(SPEC §4.A wire format).\n\nValidation: all components finite, `w ≥ 0`, `h ≥ 0` (`x`/`y` may be\nnegative — a target can hang off-surface while scrolling).",
+        "items": {
+          "format": "double",
+          "type": "number"
+        },
+        "maxItems": 4,
+        "minItems": 4,
+        "type": "array"
+      },
+      "Scope": {
+        "description": "Access scope of a device token (SPEC §2.A scope table).",
+        "oneOf": [
+          {
+            "const": "display",
+            "description": "Text to display, speech state — read only (partner-facing screen).",
+            "type": "string"
+          },
+          {
+            "const": "control",
+            "description": "Full composer, suggestions, TTS, input (the user's devices).",
+            "type": "string"
+          },
+          {
+            "const": "care",
+            "description": "Configuration, memory per ACL, diagnostics (caregiver).",
+            "type": "string"
+          },
+          {
+            "const": "system",
+            "description": "Everything (embedded UI and local CLI only).",
+            "type": "string"
+          }
+        ]
+      },
+      "SelectionEvent": {
+        "description": "Hub → UI selection events on the `input` topic (SPEC §4.A).\n\nBudget: a committed selection reaches the UI < 20 ms after the decision.\n\nMarked `non_exhaustive`: event enums grow over time; clients must\ntolerate (ignore) unknown events rather than fail.",
+        "oneOf": [
+          {
+            "description": "The selection engine's focus entered a target.",
+            "properties": {
+              "k": {
+                "const": "sel.focus",
+                "type": "string"
+              },
+              "t": {
+                "$ref": "#/components/schemas/TimestampMicros",
+                "description": "Decision timestamp."
+              },
+              "target": {
+                "$ref": "#/components/schemas/TargetId",
+                "description": "Focused target."
+              }
+            },
+            "required": [
+              "k",
+              "target",
+              "t"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Dwell progress on the focused target (drives the UI gauge).",
+            "properties": {
+              "eta_ms": {
+                "description": "Estimated remaining time to commit, milliseconds.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "k": {
+                "const": "sel.dwell",
+                "type": "string"
+              },
+              "progress": {
+                "$ref": "#/components/schemas/Normalized",
+                "description": "Progress in `[0, 1]`."
+              },
+              "target": {
+                "$ref": "#/components/schemas/TargetId",
+                "description": "Target being dwelled on."
+              }
+            },
+            "required": [
+              "k",
+              "target",
+              "progress",
+              "eta_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A selection was committed.",
+            "properties": {
+              "k": {
+                "const": "sel.commit",
+                "type": "string"
+              },
+              "method": {
+                "$ref": "#/components/schemas/CommitMethod",
+                "description": "How it was committed."
+              },
+              "t": {
+                "$ref": "#/components/schemas/TimestampMicros",
+                "description": "Decision timestamp."
+              },
+              "target": {
+                "$ref": "#/components/schemas/TargetId",
+                "description": "Committed target."
+              }
+            },
+            "required": [
+              "k",
+              "target",
+              "method",
+              "t"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Focus/dwell was cancelled (target left, signal lost…).",
+            "properties": {
+              "k": {
+                "const": "sel.cancel",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Scanning highlight moved to a group (SPEC §4.A).",
+            "properties": {
+              "group": {
+                "description": "Highlighted group, by convention `row:<n>` / `col:<n>` / target id.",
+                "type": "string"
+              },
+              "k": {
+                "const": "scan.highlight",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k",
+              "group"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ServerFrame": {
+        "description": "Hub → client frame.\n\nMarked `non_exhaustive`: new topics gain payloads over time (P2);\nclients must ignore frames whose topic they do not handle.",
+        "oneOf": [
+          {
+            "description": "Selection engine event.",
+            "properties": {
+              "msg": {
+                "$ref": "#/components/schemas/SelectionEvent"
+              },
+              "topic": {
+                "const": "input",
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic",
+              "msg"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "System state event.",
+            "properties": {
+              "msg": {
+                "$ref": "#/components/schemas/SystemEvent"
+              },
+              "topic": {
+                "const": "system",
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic",
+              "msg"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SessionId": {
+        "description": "A conversation session with a warm KV-cache hub-side (SPEC §5.A).",
+        "type": "string"
+      },
+      "SlotId": {
+        "description": "Cancellation slot for `/suggest`: a new request on the same slot\naborts the previous one (SPEC §5.A).",
+        "type": "string"
+      },
+      "SourceId": {
+        "description": "Input source, formatted `kind:instance` by convention\n(`gaze:webcam0`, `switch:ble0` — SPEC §4.A). The format is a\nconvention, not a parsing contract.",
+        "type": "string"
+      },
+      "SpeakRequest": {
+        "description": "`POST /voice/speak` request. Response: streamed audio\n(`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).",
+        "properties": {
+          "prosody": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProsodyTag"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Prosody tag applied to the whole utterance (one commit = one tag,\nD-6.3)."
+          },
+          "text": {
+            "description": "Text to vocalize. **P0 content** — never logged.",
+            "type": "string"
+          },
+          "voice_id": {
+            "$ref": "#/components/schemas/VoiceId",
+            "description": "Which installed voice to use."
+          }
+        },
+        "required": [
+          "text",
+          "voice_id"
+        ],
+        "type": "object"
+      },
+      "Speaker": {
+        "description": "Who produced a turn.",
+        "oneOf": [
+          {
+            "const": "user",
+            "description": "The Fluence user.",
+            "type": "string"
+          },
+          {
+            "const": "partner",
+            "description": "The conversation partner.",
+            "type": "string"
+          }
+        ]
+      },
+      "StyleProfile": {
+        "description": "Style profile (SPEC §7.B: tutoiement ? humour ? façon de dire oui/non ?\nexpressions à soi ?). All fields optional: an empty style is valid.",
+        "properties": {
+          "expressions": {
+            "description": "Signature expressions, injected into the style prompt. **P0.**",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "humor": {
+            "description": "How their humor sounds, in their words (« pince-sans-rire »). **P0.**",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "informal_address": {
+            "description": "Prefers informal address (« tutoiement ») with close people.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "yes_no_style": {
+            "description": "How they typically say yes/no (« ouais », « pas question »). **P0.**",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SuggestAborted": {
+        "description": "Why a generation ended without a final list.",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/AbortReason",
+            "description": "Cancellation cause."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SuggestConstraints": {
+        "description": "Generation constraints.",
+        "properties": {
+          "max_chars": {
+            "description": "Hard cap on suggestion length, characters.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "register": {
+            "description": "Register hint (`famille`, `formel`… — free-form, profile-defined).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SuggestDelta": {
+        "description": "Incremental suggestion text.",
+        "properties": {
+          "i": {
+            "description": "Suggestion index, `0 ≤ i < n`.",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "text": {
+            "description": "Text fragment to append.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "i",
+          "text"
+        ],
+        "type": "object"
+      },
+      "SuggestEvent": {
+        "description": "Events of the `/suggest` SSE stream (SPEC §5.A).\n\nSSE mapping: the variant name is the SSE `event:` field, the payload is\nthe `data:` JSON. The canonical JSON form below (`{\"event\": …, \"data\":\n…}`) is what the schema documents.\n\n`non_exhaustive`: streams may gain event kinds; clients ignore unknown\nevents.",
+        "oneOf": [
+          {
+            "description": "Incremental text for suggestion `i` (append to previous deltas).",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/SuggestDelta"
+              },
+              "event": {
+                "const": "delta",
+                "type": "string"
+              }
+            },
+            "required": [
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Terminal event: the complete, post-processed suggestion list.",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/SuggestFinal"
+              },
+              "event": {
+                "const": "final",
+                "type": "string"
+              }
+            },
+            "required": [
+              "event",
+              "data"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Terminal event: generation was cancelled.",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/SuggestAborted"
+              },
+              "event": {
+                "const": "aborted",
+                "type": "string"
+              }
+            },
+            "required": [
+              "event",
+              "data"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SuggestFinal": {
+        "description": "Final suggestion list.",
+        "properties": {
+          "suggestions": {
+            "description": "Post-processed suggestions, best first. May be shorter than `n`\n(an empty slot costs less than a bad suggestion, SPEC §7.A).",
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "type": "object"
+      },
+      "SuggestMode": {
+        "description": "The four acceleration functions (SPEC §5).",
+        "oneOf": [
+          {
+            "const": "replies",
+            "description": "Replies in context, zero keystrokes.",
+            "type": "string"
+          },
+          {
+            "const": "rephrase",
+            "description": "Noisy/telegraphic fragment → full sentence in the user's style.",
+            "type": "string"
+          },
+          {
+            "const": "expand",
+            "description": "Abbreviation expansion (expert mode).",
+            "type": "string"
+          },
+          {
+            "const": "continue",
+            "description": "Continue the draft.",
+            "type": "string"
+          }
+        ]
+      },
+      "SuggestRequest": {
+        "description": "`POST /sessions/{id}/suggest` request (SPEC §5.A).\n\nWire example:\n`{\"mode\":\"rephrase\",\"draft\":\"veu eau frache ce soir\",\"n\":3,\"slot\":\"main\",`\n`\"constraints\":{\"max_chars\":120,\"register\":\"famille\"},\"style_profile\":\"default\"}`",
+        "properties": {
+          "constraints": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestConstraints"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional generation constraints."
+          },
+          "draft": {
+            "description": "Current draft — tolerant to eye-typing noise by design.\n**P0 content** — never logged.",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SuggestMode",
+            "description": "Which acceleration function to run."
+          },
+          "n": {
+            "description": "Number of suggestions requested (UI guidance: 3 max, SPEC §7.A).",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slot": {
+            "$ref": "#/components/schemas/SlotId",
+            "description": "Cancellation slot: a new request on the same slot aborts the\nprevious one (it receives [`SuggestEvent::Aborted`])."
+          },
+          "style_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProfileId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Style profile to speak *like the person* (SPEC §5)."
+          }
+        },
+        "required": [
+          "mode",
+          "draft",
+          "n",
+          "slot"
+        ],
+        "type": "object"
+      },
+      "Suggestion": {
+        "description": "One suggestion.",
+        "properties": {
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it came from — memory-sourced suggestions carry a discreet\nmarker in the UI (SPEC §5.B)."
+          },
+          "score": {
+            "description": "Model confidence, higher is better (comparable within one response\nonly).",
+            "format": "double",
+            "type": "number"
+          },
+          "text": {
+            "description": "Suggested text. **P0 content** — never logged.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "score"
+        ],
+        "type": "object"
+      },
+      "SuggestionOrigin": {
+        "description": "Origin of a suggestion.",
+        "oneOf": [
+          {
+            "const": "model",
+            "description": "Generated by the language model.",
+            "type": "string"
+          },
+          {
+            "const": "memory",
+            "description": "Short-circuited from a recurring phrase in personal memory\n(no LLM call — SPEC §5.B).",
+            "type": "string"
+          },
+          {
+            "const": "ngram",
+            "description": "Produced by the embedded n-gram fallback (LLM down, SPEC §2.C).",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Origin added by a newer hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "SurfaceId": {
+        "description": "A target surface (screen/window) declared by a UI (SPEC §4.A).",
+        "type": "string"
+      },
+      "SwitchEvent": {
+        "description": "A physical switch transition (SPEC §4.A).\n\nWire example: `{\"k\":\"sw\",\"t\":123456789,\"src\":\"switch:ble0\",\"btn\":1,\"state\":\"down\"}`",
+        "properties": {
+          "btn": {
+            "description": "Button index on the device, starting at 1.",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "src": {
+            "$ref": "#/components/schemas/SourceId",
+            "description": "Producing source (`switch:ble0`, `switch:usb1`…)."
+          },
+          "state": {
+            "$ref": "#/components/schemas/SwitchState",
+            "description": "Transition direction."
+          },
+          "t": {
+            "$ref": "#/components/schemas/TimestampMicros",
+            "description": "Source timestamp, microseconds, monotonic per source."
+          }
+        },
+        "required": [
+          "t",
+          "src",
+          "btn",
+          "state"
+        ],
+        "type": "object"
+      },
+      "SwitchState": {
+        "description": "Switch transition direction.",
+        "oneOf": [
+          {
+            "const": "down",
+            "description": "Pressed.",
+            "type": "string"
+          },
+          {
+            "const": "up",
+            "description": "Released.",
+            "type": "string"
+          }
+        ]
+      },
+      "SystemEvent": {
+        "description": "Hub → clients events on the `system` topic.",
+        "oneOf": [
+          {
+            "description": "First frame after a WebSocket open: negotiation outcome\n(see [`crate::ws`] for the connection contract).",
+            "properties": {
+              "k": {
+                "const": "system.hello",
+                "type": "string"
+              },
+              "topics": {
+                "description": "Topics actually granted (requested ∩ allowed by scope).",
+                "items": {
+                  "$ref": "#/components/schemas/Topic"
+                },
+                "type": "array"
+              },
+              "v": {
+                "description": "Protocol version retained by the hub.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "k",
+              "v",
+              "topics"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A worker changed state — the explicit degradation chain of\n« le clavier parle toujours » (SPEC §2.C, D-2.6).",
+            "properties": {
+              "k": {
+                "const": "system.degraded",
+                "type": "string"
+              },
+              "restart_count": {
+                "description": "Restarts since hub boot (present when the supervisor restarts it).",
+                "format": "uint32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "$ref": "#/components/schemas/WorkerState",
+                "description": "Its new state."
+              },
+              "worker": {
+                "$ref": "#/components/schemas/WorkerKind",
+                "description": "Which worker."
+              }
+            },
+            "required": [
+              "k",
+              "worker",
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "ASR listening state changed. Every UI must show a visible indicator\nwhile listening is on (SPEC §5.A — third-party privacy).",
+            "properties": {
+              "enabled": {
+                "description": "Whether the microphone pipeline is active.",
+                "type": "boolean"
+              },
+              "k": {
+                "const": "system.listening",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k",
+              "enabled"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Target": {
+        "description": "One selectable target (SPEC §4.A).",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/TargetId",
+            "description": "Unique id within the surface (`key_e`, `sug_1`…)."
+          },
+          "label": {
+            "description": "Human-readable label (the letter of a key, the text of a suggestion).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prior": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Normalized"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Linguistic prior in `[0, 1]` modulating adaptive dwell and capped\nmagnetism (SPEC §4.C — never more than 40% of inter-target distance)."
+          },
+          "rect": {
+            "$ref": "#/components/schemas/Rect",
+            "description": "Bounding box in viewport pixels."
+          },
+          "role": {
+            "$ref": "#/components/schemas/TargetRole",
+            "description": "Semantic role — drives dwell/magnetism policies."
+          }
+        },
+        "required": [
+          "id",
+          "rect",
+          "role"
+        ],
+        "type": "object"
+      },
+      "TargetId": {
+        "description": "A selectable target declared by a UI (SPEC §4.A).",
+        "type": "string"
+      },
+      "TargetMap": {
+        "description": "Full declaration of a UI's selectable targets for one surface\n(`PUT /input/targets`, SPEC §4.A).\n\nWire example: `{\"surface\":\"main\",\"viewport\":{\"w\":1920,\"h\":1080},\"targets\":[…]}`",
+        "properties": {
+          "surface": {
+            "$ref": "#/components/schemas/SurfaceId",
+            "description": "Surface these targets belong to."
+          },
+          "targets": {
+            "description": "Complete list — replaces any previous declaration for this surface.",
+            "items": {
+              "$ref": "#/components/schemas/Target"
+            },
+            "type": "array"
+          },
+          "viewport": {
+            "$ref": "#/components/schemas/Viewport",
+            "description": "Pixel size of the surface viewport (target rects are expressed in it)."
+          }
+        },
+        "required": [
+          "surface",
+          "viewport",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "TargetMapPatch": {
+        "description": "Incremental update of a surface's targets (WebSocket `input` topic).\n\nApplication order: `upsert` (insert or replace by id), then `remove`.\nA `viewport` change invalidates nothing else — rects of untouched targets\nare assumed already expressed in the new viewport.",
+        "properties": {
+          "remove": {
+            "description": "Target ids to remove.",
+            "items": {
+              "$ref": "#/components/schemas/TargetId"
+            },
+            "type": "array"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/SurfaceId",
+            "description": "Surface to patch."
+          },
+          "upsert": {
+            "description": "Targets to insert or replace (matched by `id`).",
+            "items": {
+              "$ref": "#/components/schemas/Target"
+            },
+            "type": "array"
+          },
+          "viewport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Viewport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New viewport size, if it changed."
+          }
+        },
+        "required": [
+          "surface"
+        ],
+        "type": "object"
+      },
+      "TargetRole": {
+        "description": "Semantic role of a target.\n\nUnknown roles deserialize as [`TargetRole::Unknown`] so older hubs\ntolerate newer UIs (forward compatibility).",
+        "oneOf": [
+          {
+            "const": "key",
+            "description": "A keyboard key.",
+            "type": "string"
+          },
+          {
+            "const": "suggestion",
+            "description": "One of the (max 3, fixed-position) suggestion slots (SPEC §7.A).",
+            "type": "string"
+          },
+          {
+            "const": "action",
+            "description": "Any other actionable control (PARLER, tabs, emergency — SPEC §7.A).",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Role added by a newer peer; treated with default policies.",
+            "type": "string"
+          }
+        ]
+      },
+      "TimestampMicros": {
+        "description": "Microseconds since an arbitrary epoch, monotonic **per source**\n(SPEC §4.A).\n\nMonotonicity is a stream property the hub enforces at ingestion; the type\nitself only carries the value.",
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "Topic": {
+        "description": "A multiplexing topic (SPEC §2.A). Subscription is filtered by scope:\n`display` receives `system` + composed text; `control` adds `input`…",
+        "oneOf": [
+          {
+            "const": "input",
+            "description": "Input protocol: samples in, selection events out (SPEC §4.A).",
+            "type": "string"
+          },
+          {
+            "const": "asr",
+            "description": "Partner speech transcription (P2 — reserved, no frames in v1).",
+            "type": "string"
+          },
+          {
+            "const": "suggest",
+            "description": "Push suggestions (P2 — reserved, no frames in v1).",
+            "type": "string"
+          },
+          {
+            "const": "voice",
+            "description": "Voice/TTS events (P2 — reserved, no frames in v1).",
+            "type": "string"
+          },
+          {
+            "const": "system",
+            "description": "System state: degradations, listening indicator, hello (SPEC §2.C).",
+            "type": "string"
+          }
+        ]
+      },
+      "Turn": {
+        "description": "`POST /sessions/{id}/turns` — one conversation turn (SPEC §5.A).",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/TurnSource",
+            "description": "How the text was produced."
+          },
+          "speaker": {
+            "$ref": "#/components/schemas/Speaker",
+            "description": "Who produced this turn."
+          },
+          "text": {
+            "description": "Turn text. **P0 content** — never logged (SPEC §9.A).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "speaker",
+          "text",
+          "source"
+        ],
+        "type": "object"
+      },
+      "TurnSource": {
+        "description": "How a turn's text was produced.",
+        "oneOf": [
+          {
+            "const": "typed",
+            "description": "Typed in the composer.",
+            "type": "string"
+          },
+          {
+            "const": "asr",
+            "description": "Transcribed from the partner's speech (consented ASR, §5.A).",
+            "type": "string"
+          },
+          {
+            "const": "spoken",
+            "description": "Spoken through TTS by the user.",
+            "type": "string"
+          }
+        ]
+      },
+      "Viewport": {
+        "description": "Viewport size in pixels.",
+        "properties": {
+          "h": {
+            "description": "Height in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "w": {
+            "description": "Width in pixels.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "w",
+          "h"
+        ],
+        "type": "object"
+      },
+      "VoiceId": {
+        "description": "An installed voice (SPEC §6).",
+        "type": "string"
+      },
+      "VoiceInfo": {
+        "description": "One installed voice.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/VoiceId",
+            "description": "Stable id to pass to `speak`."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/VoiceKind",
+            "description": "Which engine family serves it."
+          },
+          "language": {
+            "description": "BCP 47 language tag (`fr-FR`).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Display name (« Siwis (médium) », « Ma voix »).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "language"
+        ],
+        "type": "object"
+      },
+      "VoiceKind": {
+        "description": "Engine family of a voice.",
+        "oneOf": [
+          {
+            "const": "system",
+            "description": "Operating-system fallback voice (SAPI / espeak-ng) — always\navailable (« une voix, toujours », SPEC §2.C).",
+            "type": "string"
+          },
+          {
+            "const": "piper",
+            "description": "Piper voice (stock or personal fine-tuning, D-6.1).",
+            "type": "string"
+          },
+          {
+            "const": "cloned",
+            "description": "Personal cloned voice, quality stage (F5-TTS, GPU tiers).",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Kind added by a newer hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "VoicesResponse": {
+        "description": "`GET /voice/voices` response.",
+        "properties": {
+          "voices": {
+            "description": "Installed voices, ready to speak.",
+            "items": {
+              "$ref": "#/components/schemas/VoiceInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "voices"
+        ],
+        "type": "object"
+      },
+      "WorkerHealth": {
+        "description": "Health of one worker.",
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model currently loaded, if any."
+          },
+          "restart_count": {
+            "description": "Restarts since hub boot.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkerState",
+            "description": "Current state."
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerKind",
+            "description": "Which worker."
+          }
+        },
+        "required": [
+          "worker",
+          "state",
+          "restart_count"
+        ],
+        "type": "object"
+      },
+      "WorkerKind": {
+        "description": "An inference worker supervised by the hub (SPEC §2.C).\n\nUnknown kinds deserialize as [`WorkerKind::Unknown`] (forward\ncompatibility).",
+        "oneOf": [
+          {
+            "const": "llm",
+            "description": "Language model (llama.cpp).",
+            "type": "string"
+          },
+          {
+            "const": "asr",
+            "description": "Speech recognition.",
+            "type": "string"
+          },
+          {
+            "const": "tts",
+            "description": "Text-to-speech (Piper).",
+            "type": "string"
+          },
+          {
+            "const": "embed",
+            "description": "Embeddings (memory retrieval).",
+            "type": "string"
+          },
+          {
+            "const": "unknown",
+            "description": "Worker kind added by a newer hub.",
+            "type": "string"
+          }
+        ]
+      },
+      "WorkerState": {
+        "description": "Worker lifecycle state (PLAN Phase 2.3 supervisor states).",
+        "oneOf": [
+          {
+            "const": "starting",
+            "description": "Spawned, loading its model.",
+            "type": "string"
+          },
+          {
+            "const": "ready",
+            "description": "Serving normally.",
+            "type": "string"
+          },
+          {
+            "const": "degraded",
+            "description": "Serving with reduced capability (fallback active).",
+            "type": "string"
+          },
+          {
+            "const": "down",
+            "description": "Not serving; supervisor is backing off before restart.",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "fluenceToken": {
+        "description": "Per-device revocable token with a scope (SPEC §2.A)",
+        "in": "header",
+        "name": "X-Fluence-Token",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Fluence",
+      "url": "https://github.com/Pluenet-Killian/Fluence"
+    },
+    "description": "API of the Fluence hub — a local-first communication platform for people with severe motor disabilities. One session = one conversation with a warm KV-cache; suggestions stream over SSE with per-slot cancellation; input flows through the FluenceInput protocol (WebSocket topics). Authentication: per-device revocable tokens with scopes (display/control/care/system). Operations are marked `x-fluence-stability: stable` (A1 core, frozen) or `experimental` (P2 domains, may change). Errors follow RFC 9457 problem+json with a stable machine-readable code catalogue.",
+    "license": {
+      "identifier": "Apache-2.0",
+      "name": "Apache-2.0"
+    },
+    "summary": "Local communication hub: input, acceleration, voice (SPEC §5.A)",
+    "title": "Fluence hub API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/asr/consent": {
+      "post": {
+        "operationId": "post_asr_consent",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Obtain a journaled ASR consent token (explicit UI action)",
+        "tags": [
+          "asr"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/asr/listening": {
+      "post": {
+        "operationId": "post_asr_listening",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListeningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Start/stop partner-speech listening (consent required)",
+        "tags": [
+          "asr"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/input/targets": {
+      "put": {
+        "operationId": "put_input_targets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetMap"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Declare the full target map of a surface",
+        "tags": [
+          "input"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/memory/forget": {
+      "post": {
+        "operationId": "post_memory_forget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgetCandidates"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Semantic forgetting: list candidates to confirm",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/items": {
+      "post": {
+        "operationId": "post_memory_items",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryItem"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Create a memory item",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/items/{id}": {
+      "delete": {
+        "operationId": "delete_memory_items_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Delete a memory item",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/pending": {
+      "get": {
+        "operationId": "get_memory_pending",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Validation queue of learned candidates",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/pending/{id}/accept": {
+      "post": {
+        "operationId": "post_memory_pending_id_accept",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Accept a learned candidate into memory",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/pending/{id}/reject": {
+      "post": {
+        "operationId": "post_memory_pending_id_reject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Reject a learned candidate",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/memory/search": {
+      "get": {
+        "operationId": "get_memory_search",
+        "parameters": [
+          {
+            "description": "Free-text query (hybrid BM25 + vector)",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySearchResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Search personal memory (ACL-filtered)",
+        "tags": [
+          "memory"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/profiles/{id}": {
+      "get": {
+        "operationId": "get_profiles_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Read a profile",
+        "tags": [
+          "profiles"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "experimental"
+      },
+      "put": {
+        "operationId": "put_profiles_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Profile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Replace a profile",
+        "tags": [
+          "profiles"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "experimental"
+      }
+    },
+    "/api/v1/sessions": {
+      "post": {
+        "operationId": "post_sessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Open a conversation session (warm KV-cache)",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/sessions/{id}": {
+      "delete": {
+        "operationId": "delete_sessions_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Close a session",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/sessions/{id}/draft": {
+      "put": {
+        "operationId": "put_sessions_id_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Draft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Synchronize the draft (continuous autosave)",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/sessions/{id}/next-chars": {
+      "get": {
+        "operationId": "get_sessions_id_next_chars",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Draft prefix to condition the distribution on",
+            "in": "query",
+            "name": "prefix",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextCharsResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Next-character distribution on the warm KV",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/sessions/{id}/suggest": {
+      "post": {
+        "operationId": "post_sessions_id_suggest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestEvent"
+                }
+              }
+            },
+            "description": "Server-sent event stream. The `event:` field is the variant tag, `data:` is the JSON payload (canonical form documented by the schema)."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Stream suggestions (SSE, per-slot cancellation)",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/sessions/{id}/turns": {
+      "post": {
+        "operationId": "post_sessions_id_turns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Turn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Ingest a conversation turn",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/system/capabilities": {
+      "get": {
+        "operationId": "get_system_capabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Installation tier and available features",
+        "tags": [
+          "system"
+        ],
+        "x-fluence-scopes": [
+          "display",
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/system/health": {
+      "get": {
+        "operationId": "get_system_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Worker states, models, rolling latencies",
+        "tags": [
+          "system"
+        ],
+        "x-fluence-scopes": [
+          "display",
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/voice/speak": {
+      "post": {
+        "operationId": "post_voice_speak",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeakRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "audio/ogg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Streamed audio"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Vocalize text (P0 scheduler priority, streamed Opus)",
+        "tags": [
+          "voice"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/voice/voices": {
+      "get": {
+        "operationId": "get_voice_voices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicesResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "List installed voices",
+        "tags": [
+          "voice"
+        ],
+        "x-fluence-scopes": [
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/pair": {
+      "post": {
+        "operationId": "post_pair",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [],
+        "summary": "Pair a device (only while a pairing window is open)",
+        "tags": [
+          "pair"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/pair/info": {
+      "get": {
+        "operationId": "get_pair_info",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairInfo"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [],
+        "summary": "Pairing screen information",
+        "tags": [
+          "pair"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/ws": {
+      "get": {
+        "operationId": "get_ws",
+        "parameters": [
+          {
+            "description": "Comma-separated topic list (input,asr,suggest,voice,system)",
+            "in": "query",
+            "name": "topics",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Input protocol version (currently 1)",
+            "in": "query",
+            "name": "v",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket upgrade — frames are ServerFrame / ClientFrame (see components), first frame is system.hello"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "WebSocket upgrade — topics via ?topics=…&v=1 (scope-filtered)",
+        "tags": [
+          "ws"
+        ],
+        "x-fluence-scopes": [
+          "display",
+          "control",
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Embedded mode (loopback, no TLS)",
+      "url": "http://127.0.0.1:7411"
+    },
+    {
+      "description": "Home mode (LAN, local CA)",
+      "url": "https://{host}:7411",
+      "variables": {
+        "host": {
+          "default": "fluence.local"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "description": "Device pairing and scoped tokens (SPEC §2.A)",
+      "name": "pair"
+    },
+    {
+      "description": "Conversation sessions, turns, draft, suggestions (SPEC §5.A)",
+      "name": "sessions"
+    },
+    {
+      "description": "Personal memory — experimental P2 domain (SPEC §5.B)",
+      "name": "memory"
+    },
+    {
+      "description": "Text-to-speech (SPEC §6)",
+      "name": "voice"
+    },
+    {
+      "description": "Consented partner-speech listening — experimental (SPEC §5.A)",
+      "name": "asr"
+    },
+    {
+      "description": "User profiles — experimental (SPEC §7.B)",
+      "name": "profiles"
+    },
+    {
+      "description": "FluenceInput v1 target declaration (SPEC §4.A)",
+      "name": "input"
+    },
+    {
+      "description": "Health, capabilities, degradation events (SPEC §2.C)",
+      "name": "system"
+    },
+    {
+      "description": "WebSocket multiplexed topics (SPEC §2.A)",
+      "name": "ws"
+    }
+  ]
+}

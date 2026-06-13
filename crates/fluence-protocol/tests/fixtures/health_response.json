@@ -1,0 +1,17 @@
+{
+  "version": "0.0.0",
+  "started_at": "2026-06-13T08:30:00Z",
+  "workers": [
+    {
+      "worker": "llm",
+      "state": "ready",
+      "restart_count": 0,
+      "model": { "id": "gemma-e2b-q4", "version": "1.0.2" }
+    },
+    { "worker": "tts", "state": "ready", "restart_count": 1 }
+  ],
+  "latencies": [
+    { "class": "next_chars", "p50_ms": 14.2, "p95_ms": 38.0 },
+    { "class": "speak_first_audio", "p50_ms": 120.0, "p95_ms": 270.5 }
+  ]
+}
