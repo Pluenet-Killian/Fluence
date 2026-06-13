@@ -66,6 +66,7 @@ class LlamaTeacher:
         self._seed = seed
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._calls = 0
 
     def complete(self, system: str, user: str) -> str:
         """Return the assistant reply to a ``(system, user)`` message pair.
@@ -74,6 +75,11 @@ class LlamaTeacher:
         would otherwise spend the whole token budget in a hidden ``thought``
         channel and return empty ``content``. Disabling it yields the dialogue
         directly — faster and complete.
+
+        The seed advances by one per call (``seed + call_index``) so repeated
+        cells (``per_cell > 1``) draw *different* dialogues instead of the same
+        one collapsing under dedup — still reproducible, since the call order is
+        fixed.
         """
         payload: dict[str, object] = {
             "messages": [
@@ -82,10 +88,11 @@ class LlamaTeacher:
             ],
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
-            "seed": self._seed,
+            "seed": self._seed + self._calls,
             "stream": False,
             "chat_template_kwargs": {"enable_thinking": False},
         }
+        self._calls += 1
         data = json.loads(_post(self._chat_url, payload, timeout=self._timeout))
         return str(data["choices"][0]["message"]["content"])
 
