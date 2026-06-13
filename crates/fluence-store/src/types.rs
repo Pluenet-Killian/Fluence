@@ -51,6 +51,20 @@ pub struct DraftRecord {
     pub updated_at_micros: u64,
 }
 
+/// One draft write in a batch flush. `text` is **P0** (behind
+/// `SecretString`, so `Debug` never shows it).
+#[derive(Debug)]
+pub struct DraftWrite {
+    /// Session the draft belongs to.
+    pub session_id: String,
+    /// Draft text (P0).
+    pub text: SecretString,
+    /// Caret position (Unicode scalar values).
+    pub caret: u32,
+    /// Client-side timestamp of the last keystroke, microseconds.
+    pub updated_at_micros: u64,
+}
+
 /// An access-journal entry to append. **Metadata only, never P0**
 /// (SPEC §9.A): `detail` describes the action, never user content.
 #[derive(Debug, Clone)]

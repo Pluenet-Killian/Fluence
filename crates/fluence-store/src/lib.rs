@@ -29,7 +29,7 @@ use secrecy::SecretString;
 use tokio::sync::{mpsc, oneshot};
 
 pub use key::KeySource;
-pub use types::{AccessEntry, DeviceRecord, DraftRecord, NewAccessEntry, NewDevice};
+pub use types::{AccessEntry, DeviceRecord, DraftRecord, DraftWrite, NewAccessEntry, NewDevice};
 
 use actor::Command;
 
@@ -168,6 +168,19 @@ impl Store {
             reply,
         })
         .await
+    }
+
+    /// Inserts or replaces many drafts atomically in a single transaction.
+    /// **P0 content.** One fsync covers the whole batch, which is what keeps
+    /// the autosave flush bounded under many dirty sessions (D-2.6); an
+    /// empty batch is a cheap no-op.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError`] on database failure or closed store.
+    pub async fn upsert_drafts(&self, drafts: Vec<DraftWrite>) -> Result<(), StoreError> {
+        self.call(|reply| Command::UpsertDrafts { drafts, reply })
+            .await
     }
 
     /// Reads back the draft of a session (session resumption, kill-tests).

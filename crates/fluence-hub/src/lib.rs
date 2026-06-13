@@ -47,6 +47,14 @@ pub enum HubError {
         /// Underlying error.
         source: std::io::Error,
     },
+    /// A startup filesystem step failed (data dir, system-token file).
+    #[error("hub setup ({context}): {source}")]
+    Setup {
+        /// What was being set up.
+        context: &'static str,
+        /// Underlying error.
+        source: std::io::Error,
+    },
 }
 
 /// A running hub: real address, graceful-stop handle, join handle.
@@ -197,9 +205,12 @@ async fn ensure_system_token(state: &AppState) -> Result<(), HubError> {
             scope: Scope::System,
         })
         .await?;
-    std::fs::create_dir_all(&state.config().data_dir).ok();
-    std::fs::write(&path, &token).map_err(|source| HubError::Bind {
-        addr: SocketAddr::new(state.config().listen_addr, 0),
+    std::fs::create_dir_all(&state.config().data_dir).map_err(|source| HubError::Setup {
+        context: "create data dir",
+        source,
+    })?;
+    std::fs::write(&path, &token).map_err(|source| HubError::Setup {
+        context: "write system token",
         source,
     })?;
     #[cfg(unix)]

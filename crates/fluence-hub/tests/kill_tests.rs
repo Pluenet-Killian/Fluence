@@ -337,6 +337,84 @@ fn hub_killed_mid_typing_loses_at_most_one_second() {
 }
 
 #[test]
+fn flush_stays_bounded_under_a_flood_of_dirty_sessions() {
+    // F20: a buggy or hostile *local* Control client opens a flood of
+    // distinct sessions and PUTs a draft into each. The autosave flush
+    // batches the whole tick into a single transaction (one fsync), so its
+    // duration cannot grow with the session count and starve a legitimately
+    // typed session of its ≤ 1 s loss bound (D-2.6). Before the fix the
+    // flush fsynced N drafts one by one and could run for seconds; a kill -9
+    // mid-flush then lost far more than 1 s of the real keystroke.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (mut hub, _boot) = HubProcess::spawn(dir.path(), false);
+    let control = hub.pair_control_token();
+    let agent = ureq::agent();
+
+    // Flood: many distinct dirty sessions buffered in one flush window.
+    for i in 0..3_000u32 {
+        let _ = agent
+            .put(hub.url(&format!("/api/v1/sessions/flood-{i}/draft")))
+            .header("X-Fluence-Token", &control)
+            .send_json(serde_json::json!({ "text": format!("noise {i}"), "caret": 1 }));
+    }
+
+    // The legitimate session keeps typing through the flood.
+    let session: serde_json::Value = agent
+        .post(hub.url("/api/v1/sessions"))
+        .header("X-Fluence-Token", &control)
+        .send_empty()
+        .expect("session")
+        .body_mut()
+        .read_json()
+        .expect("json");
+    let session_id = session["session_id"].as_str().expect("id").to_owned();
+
+    let mut acknowledged: Vec<(Instant, String)> = Vec::new();
+    let mut text = String::new();
+    for i in 0..15 {
+        let _ = write!(text, "k{i} ");
+        let caret = u32::try_from(text.chars().count()).expect("fits");
+        let response = agent
+            .put(hub.url(&format!("/api/v1/sessions/{session_id}/draft")))
+            .header("X-Fluence-Token", &control)
+            .send_json(serde_json::json!({ "text": text, "caret": caret }));
+        if response.is_ok() {
+            acknowledged.push((Instant::now(), text.clone()));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let killed_at = Instant::now();
+    hub.kill_dash_nine();
+
+    // Restart: the legitimate draft must be at most 1 s older than the kill,
+    // even though thousands of other sessions were flushed in the same tick.
+    let (hub2, _boot) = HubProcess::spawn(dir.path(), false);
+    let control2 = hub2.pair_control_token();
+    let draft: serde_json::Value = ureq::agent()
+        .get(hub2.url(&format!("/api/v1/sessions/{session_id}/draft")))
+        .header("X-Fluence-Token", &control2)
+        .call()
+        .expect("legitimate draft restored")
+        .body_mut()
+        .read_json()
+        .expect("json");
+    let restored = draft["text"].as_str().expect("text");
+
+    let restored_at = acknowledged
+        .iter()
+        .find(|(_, text)| text == restored)
+        .map(|(at, _)| *at)
+        .expect("restored draft matches an acknowledged keystroke");
+    let lost = killed_at.duration_since(restored_at);
+    assert!(
+        lost <= Duration::from_secs(1),
+        "lost {lost:?} of typing under a {}-session flood (D-2.6 guarantees ≤ 1 s)",
+        3_000
+    );
+}
+
+#[test]
 fn fifty_kill_cycles_leave_rss_stable() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (hub, _boot) = HubProcess::spawn(dir.path(), true);

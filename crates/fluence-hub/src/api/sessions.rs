@@ -24,6 +24,12 @@ pub async fn create_session(State(_state): State<AppState>) -> Json<CreateSessio
 
 /// `DELETE /api/v1/sessions/{id}`: a closed conversation's draft has no
 /// reason to outlive it (it was spoken or abandoned).
+///
+/// `discard_pending_draft` both drops the unflushed buffer **and** plants
+/// a tombstone, so a concurrent autosave flush that already snapshotted
+/// this draft is suppressed before it can write back — the `DELETE` is
+/// authoritative against the flusher, and the P0 text is purged for good
+/// (SPEC §9.A; closes the delete-vs-flush race F10).
 pub async fn delete_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,

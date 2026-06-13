@@ -9,10 +9,24 @@ use rusqlite::{Connection, OptionalExtension, params};
 use secrecy::{ExposeSecret, SecretString};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::types::{AccessEntry, DeviceRecord, DraftRecord, NewAccessEntry, NewDevice};
+use crate::types::{AccessEntry, DeviceRecord, DraftRecord, DraftWrite, NewAccessEntry, NewDevice};
 use crate::{StoreConfig, StoreError, key, schema};
 
 type Reply<R> = oneshot::Sender<Result<R, StoreError>>;
+
+/// Hard cap on retained access-journal rows (ADR-0005 §5; F26).
+///
+/// The journal is *append-only metadata* written on uncontrolled paths —
+/// notably `auth.rejected`, which an unauthenticated loopback client can
+/// hammer (`auth.rs`, `ws.rs`). Without a bound the table grows forever:
+/// it fills the home disk *and* — worse, because it bites first — floods
+/// the single store connection's fsync queue, starving the draft flusher
+/// and threatening the «&nbsp;≤ 1 s lost&nbsp;» guarantee (D-2.6). Trimming
+/// on every append makes growth structurally impossible and keeps the WAL
+/// and its checkpoints small, so the keyboard path stays fast. 5 000 rows
+/// is far more history than the caregiver UI ever shows yet trivial on
+/// disk (< 1 MB encrypted).
+const JOURNAL_MAX_ROWS: i64 = 5_000;
 
 /// Commands the [`crate::Store`] handle sends to the actor.
 pub enum Command {
@@ -52,6 +66,14 @@ pub enum Command {
         caret: u32,
         /// Last-keystroke timestamp (µs).
         updated_at_micros: u64,
+        /// Result channel.
+        reply: Reply<()>,
+    },
+    /// Insert/replace many drafts in a single transaction (one fsync for
+    /// the whole batch — the autosave flush path, D-2.6).
+    UpsertDrafts {
+        /// Drafts to persist, in the order they should be written.
+        drafts: Vec<DraftWrite>,
         /// Result channel.
         reply: Reply<()>,
     },
@@ -193,6 +215,9 @@ fn dispatch(conn: &mut Connection, command: Command) -> bool {
                 updated_at_micros,
             ));
         }
+        Command::UpsertDrafts { drafts, reply } => {
+            let _ = reply.send(upsert_drafts(conn, &drafts));
+        }
         Command::Draft { session_id, reply } => {
             let _ = reply.send(draft(conn, &session_id));
         }
@@ -201,7 +226,7 @@ fn dispatch(conn: &mut Connection, command: Command) -> bool {
         }
         Command::JournalAppend { entry, reply } => {
             let _ = reply.send(journal_append(conn, &entry));
-        }
+        } // takes &mut: append + trim commit in one transaction (one fsync)
         Command::JournalRecent { limit, reply } => {
             let _ = reply.send(journal_recent(conn, limit));
         }
@@ -293,6 +318,41 @@ fn upsert_draft(
     Ok(())
 }
 
+/// Persists a whole batch of drafts inside a single transaction, so the
+/// `synchronous=FULL` fsync cost is paid **once** for the batch instead of
+/// once per draft. This bounds the autosave flush duration regardless of
+/// how many sessions are dirty (D-2.6): a flusher tick no longer stretches
+/// linearly with the session count, which kept the «&nbsp;≤ 1 s lost&nbsp;»
+/// window from blowing up under a burst of distinct sessions. An empty
+/// batch is a no-op (no transaction, no fsync). The whole batch commits or
+/// rolls back atomically — a partial flush never leaves the store in a
+/// state the loss-bound reasoning does not cover.
+fn upsert_drafts(conn: &mut Connection, drafts: &[DraftWrite]) -> Result<(), StoreError> {
+    if drafts.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    {
+        let mut statement = tx.prepare_cached(
+            "INSERT INTO drafts (session_id, text, caret, updated_at_micros)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session_id) DO UPDATE
+             SET text = excluded.text, caret = excluded.caret,
+                 updated_at_micros = excluded.updated_at_micros",
+        )?;
+        for draft in drafts {
+            statement.execute(params![
+                draft.session_id,
+                draft.text.expose_secret(),
+                draft.caret,
+                draft.updated_at_micros,
+            ])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 fn draft(conn: &Connection, session_id: &str) -> Result<Option<DraftRecord>, StoreError> {
     conn.query_row(
         "SELECT text, caret, updated_at_micros FROM drafts WHERE session_id = ?1",
@@ -317,8 +377,21 @@ fn delete_draft(conn: &Connection, session_id: &str) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn journal_append(conn: &Connection, entry: &NewAccessEntry) -> Result<(), StoreError> {
-    conn.execute(
+/// Appends a journal entry and trims the table back under
+/// [`JOURNAL_MAX_ROWS`] in the *same* transaction, so the access journal
+/// is bounded by construction (F26).
+///
+/// Insert and trim share one commit — hence one fsync — so a flood of
+/// `auth.rejected` writes cannot multiply IO on the connection the draft
+/// flusher depends on. The trim deletes by `id` (the rowid: an integer
+/// primary key, already indexed), and `id` is `AUTOINCREMENT`, so the
+/// high-water mark keeps rising across deletes and reopens. In steady
+/// state at most one row is evicted per append, so this is amortized
+/// O(1); the first append after a migration from an over-budget table
+/// pays a one-off bulk delete.
+fn journal_append(conn: &mut Connection, entry: &NewAccessEntry) -> Result<(), StoreError> {
+    let tx = conn.transaction()?;
+    tx.execute(
         "INSERT INTO access_journal (at, device_id, action, detail) VALUES (?1, ?2, ?3, ?4)",
         params![
             Utc::now().to_rfc3339(),
@@ -327,6 +400,16 @@ fn journal_append(conn: &Connection, entry: &NewAccessEntry) -> Result<(), Store
             entry.detail
         ],
     )?;
+    // Keep only the newest JOURNAL_MAX_ROWS rows. `max(id)` is the
+    // monotonic high-water mark; anything more than the budget below it is
+    // stale. NULL-safe: on an (impossible here, post-insert) empty table
+    // `max(id)` is NULL and the predicate matches nothing.
+    tx.execute(
+        "DELETE FROM access_journal
+         WHERE id <= (SELECT max(id) FROM access_journal) - ?1",
+        params![JOURNAL_MAX_ROWS],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 

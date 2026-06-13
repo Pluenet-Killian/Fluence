@@ -68,6 +68,79 @@ async fn upsert_keeps_only_the_latest_draft() {
 }
 
 #[tokio::test]
+async fn batch_upsert_persists_every_draft_in_one_transaction() {
+    // F20: the autosave flush sends the whole tick as one batch (one fsync
+    // for all of it) so its duration cannot grow with the session count and
+    // blow the «&nbsp;≤ 1 s lost&nbsp;» bound (D-2.6). Every draft must
+    // still land, and survive a reopen.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = config_in(&dir);
+    let store = Store::open(config.clone()).await.expect("open");
+
+    let writes: Vec<fluence_store::DraftWrite> = (0..500)
+        .map(|i| fluence_store::DraftWrite {
+            session_id: format!("s{i}"),
+            text: SecretString::from(format!("draft {i}")),
+            caret: i,
+            updated_at_micros: u64::from(i),
+        })
+        .collect();
+    store.upsert_drafts(writes).await.expect("batch upsert");
+    store.close().await.expect("close");
+
+    let reopened = Store::open(config).await.expect("reopen");
+    for i in [0u32, 1, 250, 499] {
+        let draft = reopened
+            .draft(format!("s{i}"))
+            .await
+            .expect("read")
+            .unwrap_or_else(|| panic!("draft s{i} present"));
+        assert_eq!(draft.text.expose_secret(), format!("draft {i}"));
+        assert_eq!(draft.caret, i);
+    }
+}
+
+#[tokio::test]
+async fn batch_upsert_overwrites_and_keeps_latest_per_session() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Store::open(config_in(&dir)).await.expect("open");
+
+    store
+        .upsert_draft("s1".into(), SecretString::from("old"), 3, 10)
+        .await
+        .expect("seed");
+    // A later batch carrying the same session must win (ON CONFLICT path
+    // inside the transaction).
+    store
+        .upsert_drafts(vec![fluence_store::DraftWrite {
+            session_id: "s1".into(),
+            text: SecretString::from("new"),
+            caret: 3,
+            updated_at_micros: 20,
+        }])
+        .await
+        .expect("batch");
+
+    let draft = store
+        .draft("s1".into())
+        .await
+        .expect("read")
+        .expect("present");
+    assert_eq!(draft.text.expose_secret(), "new");
+    assert_eq!(draft.updated_at_micros, 20);
+}
+
+#[tokio::test]
+async fn empty_batch_upsert_is_a_noop() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Store::open(config_in(&dir)).await.expect("open");
+    store
+        .upsert_drafts(Vec::new())
+        .await
+        .expect("empty batch ok");
+}
+
+#[tokio::test]
 async fn wrong_key_is_a_clean_error() {
     let dir = tempfile::tempdir().expect("tempdir");
     let config = config_in(&dir);
@@ -136,6 +209,50 @@ async fn journal_orders_newest_first_and_carries_no_content_field() {
     assert_eq!(recent.len(), 2);
     assert_eq!(recent[0].action, "auth.rejected");
     assert_eq!(recent[1].action, "device.paired");
+}
+
+#[tokio::test]
+async fn journal_is_bounded_under_a_flood() {
+    // F26: an unauthenticated loopback client can hammer `auth.rejected`.
+    // The journal must stay bounded so it neither fills the home disk nor
+    // floods the store connection the draft flusher shares (D-2.6). We
+    // assert the row cap holds and the *newest* entries survive eviction.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = config_in(&dir);
+    let store = Store::open(config.clone()).await.expect("open");
+
+    // Far more appends than the cap: every excess row must be evicted.
+    let total = 5_000 + 250;
+    for i in 0..total {
+        store
+            .journal_append(NewAccessEntry {
+                device_id: None,
+                action: "auth.rejected".into(),
+                detail: Some(format!("seq={i}")),
+            })
+            .await
+            .expect("append");
+    }
+
+    // Reading the whole budget back returns at most the cap, and the very
+    // first entry is the freshest write (newest-first ordering).
+    let recent = store.journal_recent(10_000).await.expect("recent");
+    assert!(
+        recent.len() <= 5_000,
+        "journal must stay bounded, got {} rows",
+        recent.len()
+    );
+    assert_eq!(
+        recent[0].detail.as_deref(),
+        Some(format!("seq={}", total - 1).as_str()),
+        "the newest entry must survive eviction"
+    );
+
+    // The bound holds across reopen (AUTOINCREMENT high-water mark).
+    store.close().await.expect("close");
+    let reopened = Store::open(config).await.expect("reopen");
+    let after = reopened.journal_recent(10_000).await.expect("recent");
+    assert!(after.len() <= 5_000, "bound must hold after reopen");
 }
 
 #[tokio::test]
