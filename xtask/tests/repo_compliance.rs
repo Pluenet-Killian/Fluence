@@ -25,22 +25,29 @@ fn repository_conforms_to_license_layout() {
     );
 }
 
-/// Phase-gated commands exit with the dedicated code 2 and say which phase
-/// delivers them, so a CI job calling them too early fails loudly and
-/// explicitly rather than silently passing. (`run-eval` was gated until
-/// Phase 3 delivered it; `download-test-assets` remains gated.)
+/// The test-asset manifest is well-formed and the command is wired: `--check`
+/// validates and reports without touching the network, so CI and contributors
+/// can trust the manifest before a (large) download. A malformed manifest —
+/// bad sha256, non-https URL, traversal-prone filename — turns this red.
 #[test]
-fn phase_gated_commands_fail_explicitly() {
-    let (command, phase) = ("download-test-assets", "Phase 3");
+fn download_test_assets_check_validates_the_manifest() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask lives one level below the repository root");
     let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
-        .arg(command)
+        .args(["download-test-assets", "--check"])
+        .current_dir(repo_root)
         .output()
         .expect("xtask binary runs");
-    assert_eq!(output.status.code(), Some(2), "{command} must exit with 2");
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains(phase),
-        "{command} must mention {phase}, got: {stderr}"
+        output.status.success(),
+        "download-test-assets --check failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("manifest v1 OK") && stdout.contains("tiny-llm"),
+        "check output should confirm the manifest and list the model, got: {stdout}"
     );
 }
 
