@@ -53,6 +53,16 @@ describe("FluenceClient transport", () => {
     expect(calls[0]?.url).toBe(`${BASE}/api/v1/sessions/a%2Fb%20c`);
   });
 
+  it("posts the emergency state to the system endpoint", async () => {
+    const { fetch, calls } = mockFetch([new Response(null, { status: 204 })]);
+    const client = new FluenceClient({ baseUrl: BASE, token: "t", fetch });
+
+    await client.emergency(true);
+    expect(calls[0]?.url).toBe(`${BASE}/api/v1/system/emergency`);
+    expect(calls[0]?.init.method).toBe("POST");
+    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({ active: true });
+  });
+
   it("surfaces problem+json errors as FluenceProblemError", async () => {
     const problem: Problem = {
       type: "urn:fluence:problem:scope_insufficient",

@@ -417,6 +417,16 @@ pub fn routes() -> &'static [RouteSpec] {
             }],
         },
         RouteSpec {
+            method: Post,
+            path: "/api/v1/system/emergency",
+            summary: "Raise or clear the emergency alert (double-confirmed; D-7.4)",
+            auth: RouteAuth::Scoped(&[Control]),
+            stability: Stable,
+            request: Some("EmergencyRequest"),
+            response: NoContent,
+            query: &[],
+        },
+        RouteSpec {
             method: Get,
             path: "/ws",
             summary: "WebSocket upgrade — topics via ?topics=…&v=1 (scope-filtered)",

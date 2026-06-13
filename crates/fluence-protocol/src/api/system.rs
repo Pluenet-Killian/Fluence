@@ -47,6 +47,29 @@ pub enum SystemEvent {
         /// Whether the microphone pipeline is active.
         enabled: bool,
     },
+    /// Emergency alert raised or cleared by the user (SPEC §7.A, D-7.4).
+    /// Broadcast to every paired client on the `system` topic: each shows a
+    /// banner, the main installation rings locally. Phase 5.4.
+    #[serde(rename = "system.emergency")]
+    Emergency {
+        /// `true` raises the alert, `false` clears it.
+        active: bool,
+        /// When the state last changed (hub clock).
+        at: DateTime<Utc>,
+    },
+}
+
+/// `POST /system/emergency` — raise or clear the emergency alert (D-7.4).
+///
+/// Requires `control` scope (the user triggers it from the composer after a
+/// double confirmation, SPEC §7.A). The hub broadcasts
+/// [`SystemEvent::Emergency`] on the `system` topic and rings locally; the
+/// resulting state reaches the caller through that broadcast, so the call
+/// itself returns `204 No Content`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EmergencyRequest {
+    /// Desired state: `true` raises the alert, `false` clears it.
+    pub active: bool,
 }
 
 /// An inference worker supervised by the hub (SPEC §2.C).
@@ -226,5 +249,26 @@ mod tests {
         // frames that fail to parse. Unknown WORKER kinds, however, parse.
         let worker: WorkerKind = serde_json::from_str("\"ocr\"").unwrap();
         assert_eq!(worker, WorkerKind::Unknown);
+    }
+
+    #[test]
+    fn emergency_event_wire_format() {
+        let at = "2026-06-13T10:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let event = SystemEvent::Emergency { active: true, at };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["k"], "system.emergency");
+        assert_eq!(json["active"], true);
+        assert_eq!(json["at"], "2026-06-13T10:00:00Z");
+    }
+
+    #[test]
+    fn emergency_request_round_trips() {
+        let request = EmergencyRequest { active: false };
+        let json = serde_json::to_string(&request).unwrap();
+        assert_eq!(json, r#"{"active":false}"#);
+        assert_eq!(
+            serde_json::from_str::<EmergencyRequest>(&json).unwrap(),
+            request
+        );
     }
 }

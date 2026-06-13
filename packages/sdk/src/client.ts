@@ -19,6 +19,7 @@ import type {
   CreateMemoryItem,
   CreateSessionResponse,
   Draft,
+  EmergencyRequest,
   ForgetCandidates,
   ForgetRequest,
   HealthResponse,
@@ -164,6 +165,17 @@ export class FluenceClient {
   /** Installation tier and available features. */
   async capabilities(): Promise<CapabilitiesResponse> {
     return this.#json("GET", "/api/v1/system/capabilities");
+  }
+
+  /**
+   * Raise (`active: true`) or clear (`active: false`) the emergency alert
+   * (D-7.4). The hub broadcasts it to every paired client on the `system`
+   * topic; the double confirmation is the UI's responsibility (SPEC §7.A).
+   */
+  async emergency(active: boolean): Promise<void> {
+    await this.#noContent("POST", "/api/v1/system/emergency", {
+      active,
+    } satisfies EmergencyRequest);
   }
 
   // ---- Memory (SPEC §5.B) — @experimental: may change until Phase 9 ----

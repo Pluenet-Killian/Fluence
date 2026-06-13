@@ -43,6 +43,7 @@ export type VoicesResponse = Schemas["VoicesResponse"];
 // System (SPEC §2.C) — stable.
 export type HealthResponse = Schemas["HealthResponse"];
 export type CapabilitiesResponse = Schemas["CapabilitiesResponse"];
+export type EmergencyRequest = Schemas["EmergencyRequest"];
 export type SystemEvent = Schemas["SystemEvent"];
 export type ServerFrame = Schemas["ServerFrame"];
 export type Topic = Schemas["Topic"];
