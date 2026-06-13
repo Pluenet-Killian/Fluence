@@ -96,6 +96,26 @@ async fn retyping_after_close_reopens_the_session() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_buffered_draft_survives_a_store_flush_error() {
+    // F01: the draft must stay buffered (for a later retry) when the store
+    // rejects the write — never drained-then-lost. A keystroke acknowledged
+    // to the user must not vanish from both RAM and disk (D-2.6).
+    let dir = tempfile::tempdir().expect("tempdir");
+    let state = test_state(&dir).await;
+
+    state.buffer_draft("s1".into(), draft("acquittee mais pas encore ecrite", 9));
+
+    // Kill the store actor: every handle now errors on use.
+    state.store().clone().close().await.expect("close");
+    state.flush_drafts().await; // upsert fails — must not drop the draft
+
+    assert!(
+        state.pending_draft("s1").is_some(),
+        "a draft lost on a store flush error (F01)"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_flush_persists_every_session_in_one_pass() {
     let dir = tempfile::tempdir().expect("tempdir");
     let state = test_state(&dir).await;

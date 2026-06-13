@@ -76,14 +76,6 @@ struct BufferedDraft {
     generation: u64,
 }
 
-/// What the flusher carries out of a drain tick: the draft to persist and
-/// the generation it was buffered at.
-struct DrainedDraft {
-    session_id: String,
-    draft: PendingDraft,
-    generation: u64,
-}
-
 /// Coordination state shared between writers (HTTP handlers) and the
 /// flusher, guarded by one mutex so every decision is serialized.
 ///
@@ -95,9 +87,18 @@ struct DrainedDraft {
 struct DraftBuffer {
     dirty: HashMap<String, BufferedDraft>,
     /// Tombstones: highest generation seen by a `delete_session`, per
-    /// closed session. Pruned as soon as the flusher confirms no equal-or-
-    /// older write can still be in flight (bounded — see [`AppState::take_dirty_drafts`]).
+    /// closed session. Reclaimed once the session holds no dirty draft
+    /// (see [`prune_orphan_tombstones_locked`]) — bounded by the live
+    /// working set, not by history.
     deleted_at: HashMap<String, u64>,
+}
+
+/// Drops tombstones for sessions that no longer have a buffered draft: with
+/// nothing in `dirty`, no upsert can be in flight, so the tombstone is
+/// spent. Split-borrows the two maps so `retain` can consult `dirty`.
+fn prune_orphan_tombstones_locked(drafts: &mut DraftBuffer) {
+    let DraftBuffer { dirty, deleted_at } = drafts;
+    deleted_at.retain(|session_id, _| dirty.contains_key(session_id));
 }
 
 struct Inner {
@@ -203,26 +204,38 @@ impl AppState {
             })
     }
 
-    /// Drains every dirty draft for persistence, tagged with the generation
-    /// each was buffered at. Also prunes tombstones for sessions that hold
-    /// no dirty draft: once nothing is buffered, no upsert can be in flight
-    /// for them, so the tombstone has served its purpose (keeps
-    /// `deleted_at` bounded by the live working set, not by history).
-    fn take_dirty_drafts(&self) -> Vec<DrainedDraft> {
-        let mut drafts = lock(&self.0.drafts);
-        let drained: Vec<DrainedDraft> = drafts
-            .dirty
-            .drain()
-            .map(|(session_id, buffered)| DrainedDraft {
-                session_id,
-                draft: buffered.draft,
-                generation: buffered.generation,
-            })
-            .collect();
-        // After the drain `dirty` is empty, so every tombstone is now safe
-        // to forget: nothing buffered means nothing can be re-inserted.
-        drafts.deleted_at.clear();
-        drained
+    /// Snapshots the drafts to persist this tick **without** emptying the
+    /// buffer (F01): a draft only leaves RAM once the store *confirms* its
+    /// write ([`AppState::flush_drafts`]). Returns two aligned vectors —
+    /// `keys` of `(session_id, generation)` for the post-flush removal, and
+    /// the `DraftWrite`s for the store (P0 text moved, not re-cloned).
+    ///
+    /// A draft whose session was closed since it was buffered
+    /// (`tombstone >= generation`) is skipped — the `DELETE` wins, so a
+    /// freshly closed conversation is never written back (F10 / SPEC §9.A).
+    /// The filter runs under the lock immediately before the store call, so
+    /// the suppression window is as tight as the async boundary allows.
+    fn snapshot_survivors(&self) -> (Vec<(String, u64)>, Vec<DraftWrite>) {
+        let drafts = lock(&self.0.drafts);
+        let mut keys = Vec::new();
+        let mut writes = Vec::new();
+        for (session_id, buffered) in &drafts.dirty {
+            let suppressed = drafts
+                .deleted_at
+                .get(session_id)
+                .is_some_and(|&tombstone| tombstone >= buffered.generation);
+            if suppressed {
+                continue;
+            }
+            keys.push((session_id.clone(), buffered.generation));
+            writes.push(DraftWrite {
+                session_id: session_id.clone(),
+                text: buffered.draft.text.clone(),
+                caret: buffered.draft.caret,
+                updated_at_micros: buffered.draft.updated_at_micros,
+            });
+        }
+        (keys, writes)
     }
 
     /// Discards the unflushed draft of a closing session and plants a
@@ -244,48 +257,59 @@ impl AppState {
         *slot = (*slot).max(generation);
     }
 
-    /// Flushes all dirty drafts to the store in one transaction (one fsync
+    /// Flushes the dirty drafts to the store in one transaction (one fsync
     /// for the whole batch). Called by the periodic flusher and by graceful
     /// shutdown.
     ///
-    /// A drained draft is dropped from the batch when its session was closed
-    /// since it was buffered (`tombstone >= generation`): the `DELETE` wins,
-    /// so a freshly closed conversation is never written back into the
-    /// encrypted store (F10 / SPEC §9.A). The survivor filter runs under the
-    /// buffer lock — only a `HashMap` lookup, never an `.await` — then the
-    /// batch goes to the store. The residual race (a delete landing between
-    /// this filter and the store write) is closed by `delete_session` also
-    /// issuing a store-level `delete_draft`; see debt note in `discard_
-    /// pending_draft`.
+    /// **Durability (F01 / D-2.6).** A draft is removed from the buffer
+    /// *only after* the store acknowledges its write, and only if no fresher
+    /// keystroke arrived meanwhile (generation unchanged). On a store error
+    /// the whole batch stays buffered and is retried next tick — an
+    /// acknowledged keystroke is never lost from both RAM and disk.
+    ///
+    /// **Deletion (F10 / SPEC §9.A).** A draft whose session was closed
+    /// since it was buffered is excluded from the batch (the `DELETE` wins),
+    /// decided under the buffer lock — never an `.await` while holding it.
+    /// The narrow residual race (a delete landing after the snapshot) is
+    /// closed by `delete_session` also issuing a store `delete_draft`.
     pub async fn flush_drafts(&self) {
-        let drained = self.take_dirty_drafts();
-        if drained.is_empty() {
-            return;
-        }
-        let writes: Vec<DraftWrite> = {
-            let drafts = lock(&self.0.drafts);
-            drained
-                .into_iter()
-                .filter(|d| {
-                    drafts
-                        .deleted_at
-                        .get(&d.session_id)
-                        .is_none_or(|&tombstone| tombstone < d.generation)
-                })
-                .map(|d| DraftWrite {
-                    session_id: d.session_id,
-                    text: d.draft.text,
-                    caret: d.draft.caret,
-                    updated_at_micros: d.draft.updated_at_micros,
-                })
-                .collect()
-        };
+        let (keys, writes) = self.snapshot_survivors();
         if writes.is_empty() {
+            // Nothing to write, but stale tombstones may remain; reclaim them.
+            self.prune_orphan_tombstones();
             return;
         }
-        if let Err(error) = self.store().upsert_drafts(writes).await {
-            tracing::error!(%error, "draft flush failed");
+
+        match self.store().upsert_drafts(writes).await {
+            Ok(()) => {
+                let mut drafts = lock(&self.0.drafts);
+                for (session_id, generation) in &keys {
+                    // Drop the entry only if it is still the exact version we
+                    // persisted: a newer keystroke (higher generation) or a
+                    // delete (removed from `dirty`) must survive untouched.
+                    if drafts
+                        .dirty
+                        .get(session_id)
+                        .is_some_and(|buffered| buffered.generation == *generation)
+                    {
+                        drafts.dirty.remove(session_id);
+                    }
+                }
+                prune_orphan_tombstones_locked(&mut drafts);
+            }
+            Err(error) => {
+                // Transient store failure (e.g. disk full): keep every draft
+                // buffered for the next tick. `StoreError` carries no P0.
+                tracing::error!(%error, "draft flush failed; drafts kept buffered for retry");
+            }
         }
+    }
+
+    /// Reclaims tombstones whose session no longer has a buffered draft:
+    /// nothing buffered means no upsert can be in flight, so the tombstone
+    /// has done its job. Keeps `deleted_at` bounded by the live working set.
+    fn prune_orphan_tombstones(&self) {
+        prune_orphan_tombstones_locked(&mut lock(&self.0.drafts));
     }
 
     /// Appends an access-journal entry (never P0 in `detail`).
@@ -341,63 +365,49 @@ mod tests {
         }
     }
 
-    /// F10 regression: the destructive interleaving where the flusher has
-    /// already drained a draft (so `discard_pending_draft` finds nothing to
-    /// remove) and the `DELETE` lands before the flush completes. The
-    /// generation tombstone must suppress the upsert so the closed
-    /// session's P0 is never resurrected in the encrypted store (SPEC §9.A).
+    /// F10: a session closed before the flush snapshots it is never a flush
+    /// survivor, so its P0 is never written to the encrypted store
+    /// (SPEC §9.A). `discard_pending_draft` removes the dirty entry and
+    /// plants a tombstone; `snapshot_survivors` then excludes it, and a full
+    /// `flush_drafts` writes nothing for it.
     #[tokio::test]
-    async fn delete_during_in_flight_flush_never_resurrects_the_draft() {
+    async fn a_closed_session_is_never_a_flush_survivor() {
         let dir = tempfile::tempdir().expect("tempdir");
         let state = test_state(&dir).await;
         let session = "s-race".to_owned();
 
-        // (1) A keystroke buffers the draft.
         state.buffer_draft(session.clone(), pending("p0 intime"));
-
-        // (2) The flusher wins the drain race: it now holds the snapshot,
-        // and the dirty map no longer contains the session.
-        let drained = state.take_dirty_drafts();
-        assert_eq!(drained.len(), 1, "flusher drained the buffered draft");
-
-        // (3) The DELETE arrives mid-flush: nothing left to remove from the
-        // map, but a tombstone is planted.
+        // The DELETE lands before the flush takes its snapshot.
         state.discard_pending_draft(&session);
-        state
-            .store()
-            .delete_draft(session.clone())
-            .await
-            .expect("delete");
 
-        // (4) The flusher finishes its in-flight write. The tombstone must
-        // win and suppress it.
-        for item in drained {
-            let suppressed = {
-                let drafts = lock(&state.0.drafts);
-                drafts
-                    .deleted_at
-                    .get(&item.session_id)
-                    .is_some_and(|&t| t >= item.generation)
-            };
-            assert!(suppressed, "the in-flight upsert must be suppressed");
-            if !suppressed {
-                state
-                    .store()
-                    .upsert_draft(
-                        item.session_id,
-                        item.draft.text,
-                        item.draft.caret,
-                        item.draft.updated_at_micros,
-                    )
-                    .await
-                    .expect("upsert");
-            }
-        }
+        let (keys, writes) = state.snapshot_survivors();
+        assert!(
+            keys.is_empty() && writes.is_empty(),
+            "a closed session must not survive"
+        );
 
-        // The closed session must hold no draft.
+        state.flush_drafts().await;
         assert!(
             state.store().draft(session).await.expect("read").is_none(),
             "a deleted session's P0 was resurrected (F10)"
+        );
+    }
+
+    /// F01: a transient store error must not lose a buffered draft — it
+    /// stays in RAM for the next tick. Here the store is closed mid-life so
+    /// every write errors; the draft must remain buffered.
+    #[tokio::test]
+    async fn a_store_error_keeps_the_draft_buffered() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+        state.buffer_draft("s1".to_owned(), pending("pas encore ecrite"));
+
+        state.store().clone().close().await.expect("close");
+        state.flush_drafts().await; // every write errors
+
+        assert!(
+            state.pending_draft("s1").is_some(),
+            "the draft must stay buffered after a store error (F01)"
         );
     }
 
