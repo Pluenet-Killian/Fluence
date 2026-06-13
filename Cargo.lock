@@ -554,6 +554,10 @@ dependencies = [
 [[package]]
 name = "fluence-inference"
 version = "0.0.0"
+dependencies = [
+ "fluence-protocol",
+ "thiserror",
+]
 
 [[package]]
 name = "fluence-input"

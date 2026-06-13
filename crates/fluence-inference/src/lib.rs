@@ -11,9 +11,15 @@
 //! Native bindings live behind isolated FFI crates when they appear; this
 //! crate itself stays `forbid(unsafe_code)`.
 //!
-//! PLAN Phase 4 builds `worker-llm` (ADR on the llama.cpp binding strategy,
-//! `LlmBackend` trait); Phase 5 adds `worker-tts`. This crate intentionally
-//! stays empty until then.
+//! PLAN Phase 4 (4.1) lands the [`LlmBackend`] abstraction (ADR-0007) and a
+//! deterministic stub; the real llama.cpp `worker-llm` (4.2) and `worker-tts`
+//! (Phase 5) implement and host it next.
+
+mod backend;
+
+pub use backend::{
+    BackendError, CancelToken, GenerateOutcome, GenerateRequest, LlmBackend, StubBackend,
+};
 
 #[cfg(test)]
 mod tests {
