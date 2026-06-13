@@ -91,6 +91,8 @@ pub struct LlamaServerBackend {
     completion_url: String,
     /// Fully-qualified `…/health` endpoint, computed once.
     health_url: String,
+    /// Fully-qualified `…/v1/chat/completions` endpoint, computed once.
+    chat_url: String,
     /// Connection-pooling HTTP agent (keep-alive → warm KV reuse). Carries the
     /// agent-level `connect`/`recv_response` timeouts.
     agent: ureq::Agent,
@@ -131,6 +133,7 @@ impl LlamaServerBackend {
         Self {
             completion_url: format!("{base}/completion"),
             health_url: format!("{base}/health"),
+            chat_url: format!("{base}/v1/chat/completions"),
             agent,
             timeouts,
         }
@@ -153,17 +156,17 @@ impl LlamaServerBackend {
             .is_ok()
     }
 
-    /// POSTs `body` to `/completion` and returns the response body reader.
+    /// POSTs `body` to `url` and returns the response body reader.
     ///
     /// `ureq` treats a non-2xx status as an error by default, so a server that
     /// is up but refusing the request surfaces here as [`BackendError`]. The
     /// agent-level `connect`/`recv_response` timeouts bound a server that
     /// accepts the socket but never replies; a [`CallMode::Unary`] call also
     /// caps the body so a stalled non-streaming probe cannot hang.
-    fn open_completion(&self, body: &Value, mode: CallMode) -> Result<impl Read, BackendError> {
+    fn open(&self, url: &str, body: &Value, mode: CallMode) -> Result<impl Read, BackendError> {
         let request = self
             .agent
-            .post(&self.completion_url)
+            .post(url)
             .header("content-type", "application/json");
         let request = match mode {
             // A streaming generation runs for the whole completion, so it must
@@ -199,14 +202,19 @@ impl LlmBackend for LlamaServerBackend {
         cancel: &CancelToken,
         sink: &mut dyn FnMut(&str),
     ) -> Result<GenerateOutcome, BackendError> {
+        // Use the chat-completions endpoint so `llama-server` applies the
+        // model's chat template (Gemma, Qwen, …): an instruction-tuned model
+        // needs its template to act as an instructor, not a free-form continuer
+        // — without it it rambles and echoes the prompt (#31). The assembled
+        // prompt (`fluence-accel`) becomes the user message; the template is the
+        // backend's concern, keeping the prompt model-agnostic.
         let body = json!({
-            "prompt": request.prompt,
-            "n_predict": request.max_tokens,
+            "messages": [{ "role": "user", "content": request.prompt }],
+            "max_tokens": request.max_tokens,
             "temperature": GENERATE_TEMPERATURE,
-            "cache_prompt": true,
             "stream": true,
         });
-        let reader = BufReader::new(self.open_completion(&body, CallMode::Streaming)?);
+        let reader = BufReader::new(self.open(&self.chat_url, &body, CallMode::Streaming)?);
 
         for line in reader.lines() {
             // Cooperative cancellation between frames: a newer request on the
@@ -219,17 +227,28 @@ impl LlmBackend for LlamaServerBackend {
                 BackendError::Unavailable(format!("reading llama-server stream: {err}"))
             })?;
             let Some(payload) = sse_payload(&line) else {
-                continue; // blank separators and `event:` lines
+                continue; // blank separators and comments
             };
+            if payload == "[DONE]" {
+                return Ok(GenerateOutcome::Completed);
+            }
             let chunk: Value = serde_json::from_str(payload).map_err(|err| {
                 BackendError::Unavailable(format!("parsing llama-server frame: {err}"))
             })?;
-            if let Some(content) = chunk.get("content").and_then(Value::as_str)
+            // OpenAI chat streaming: `choices[0].delta.content` (a role-only
+            // opening delta carries no content and is skipped).
+            if let Some(content) = chunk
+                .pointer("/choices/0/delta/content")
+                .and_then(Value::as_str)
                 && !content.is_empty()
             {
                 sink(content);
             }
-            if chunk.get("stop").and_then(Value::as_bool) == Some(true) {
+            if chunk
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                .is_some()
+            {
                 return Ok(GenerateOutcome::Completed);
             }
         }
@@ -250,7 +269,7 @@ impl LlmBackend for LlamaServerBackend {
         });
 
         let mut raw = String::new();
-        self.open_completion(&body, CallMode::Unary)?
+        self.open(&self.completion_url, &body, CallMode::Unary)?
             .read_to_string(&mut raw)
             .map_err(|err| {
                 BackendError::Unavailable(format!("reading llama-server response: {err}"))
@@ -402,9 +421,9 @@ mod tests {
     #[test]
     fn generate_streams_content_deltas_until_stop() {
         let sse = concat!(
-            "data: {\"content\":\"Je \"}\n\n",
-            "data: {\"content\":\"voudrais\"}\n\n",
-            "data: {\"content\":\"\",\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Je \"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"voudrais\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let (text, outcome) = collect(&backend, &CancelToken::new());
@@ -414,11 +433,12 @@ mod tests {
 
     #[test]
     fn generate_tolerates_dataless_frames() {
-        // `event:` lines and blank separators must be ignored, not parsed.
+        // A role-only opening delta and blank separators carry no content and
+        // must be skipped, not break parsing.
         let sse = concat!(
-            "event: message\n",
-            "data: {\"content\":\"ok\"}\n\n",
-            "data: {\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let (text, outcome) = collect(&backend, &CancelToken::new());
@@ -429,9 +449,9 @@ mod tests {
     #[test]
     fn generate_stops_when_cancelled() {
         let sse = concat!(
-            "data: {\"content\":\"un\"}\n\n",
-            "data: {\"content\":\"deux\"}\n\n",
-            "data: {\"stop\":true}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"un\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"deux\"}}]}\n\n",
+            "data: [DONE]\n\n",
         );
         let backend = LlamaServerBackend::new(&mock_server("text/event-stream", sse));
         let cancel = CancelToken::new();

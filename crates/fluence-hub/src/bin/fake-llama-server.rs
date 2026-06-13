@@ -121,6 +121,17 @@ fn handle(mut stream: TcpStream) {
             );
             respond(&mut stream, "200 OK", "application/json", json.as_bytes());
         }
+    } else if path.starts_with("/v1/chat/completions") {
+        // generate() now uses the chat-completions endpoint (the real server
+        // applies the model's chat template). Stream an OpenAI-style canned
+        // rephrase so the hub's /suggest yields a model-origin suggestion.
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Je voudrais\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\" de l'eau\"}}]}\n\n",
+            "data: {\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{}}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        respond(&mut stream, "200 OK", "text/event-stream", sse.as_bytes());
     } else {
         respond(&mut stream, "404 Not Found", "text/plain", b"");
     }
