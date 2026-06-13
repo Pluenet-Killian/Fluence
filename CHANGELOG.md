@@ -5,17 +5,50 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
-## Phase 5 — La boucle complète (en cours — 2026-06-13)
+## Phase 5 — La boucle complète (features livrées — 2026-06-14)
 
 ### Ajouté
 
-- **Alerte d'urgence dans le contrat** (D-7.4, SPEC §7.A) : `SystemEvent::Emergency
+- **Alerte d'urgence de bout en bout** (D-7.4, SPEC §7.A) : `SystemEvent::Emergency
   { active, at }` diffusé sur le topic `system` à tous les clients appairés
-  (bannière partout, sonnerie locale) + `POST /api/v1/system/emergency` (scope
-  `control`, 204 — l'état revient via l'événement diffusé). Câblé dans la source
-  de vérité des schémas : goldens, `openapi.json` et le SDK `api.d.ts`
-  régénérés. La double confirmation reste l'affaire du composeur ; le hub
-  diffuse. Vérifié : spectral 0 finding, SDK typecheck + 17 tests.
+  (bannière + sonnerie) + `POST /api/v1/system/emergency` (control, 204) +
+  **runtime hub** (diffusion sur le bus *avant* le journal best-effort, D-2.6) +
+  **SDK `client.emergency()`**. Câblé dans la source de vérité : goldens,
+  `openapi.json`, `api.d.ts`. La double confirmation est l'affaire du composeur.
+- **`fluence-input` câblé au hub** (5.1, SPEC §4.A, D-4.1) : `PUT /input/targets`
+  (déclaration de la carte de cibles) ; sur le topic `input` du `/ws`, un
+  `SelectionEngine` par connexion hit-teste les échantillons pointeur et fait
+  tourner le dwell, estampillant les `SelectionUpdate` en `SelectionEvent`
+  (focus/dwell/commit/cancel) diffusés sur le bus. Souris = source v0.
+- **`worker-tts` — voix Piper + fallback OS** (5.2) : crate `fluence-voice`
+  (`PiperBackend` sous-processus PCM→WAV ; `SystemVoiceBackend` SAPI/espeak-ng,
+  « une voix, toujours » SPEC §2.C ; `FallbackVoice`). `POST /voice/speak`
+  streame du **WAV** (ADR-0009 ; opus différé Phase 7), `GET /voice/voices`. Le
+  texte P0 ne touche jamais un log. `enable_thinking=false` ajouté au backend
+  LLM (Gemma E4B raisonne sinon).
+- **Composeur web** (`apps/web-client`, 5.3/5.4, AGPL) : clavier au **dwell**
+  (souris) + clic, 3 emplacements de suggestions fixes, **PARLER** invariant,
+  **urgence** à double confirmation (bannière + sonnerie), SSE pour les
+  suggestions, WS pour la sélection, anti-scintillement (1 maj/600 ms, jamais
+  pendant dwell > 40 %), reconnexion, autosave draft, **i18n** (clés, FR seul)
+  et thème **contraste élevé**. Servi par le hub en PWA même origine
+  (`ServeDir`, `FLUENCE_WEB_DIR`).
+- **Instrumentation locale** (5.5) : WPM effectif et économie de frappe réels,
+  calculés côté client et affichés (« mon premier WPM réel », SPEC §1.2).
+
+### Vérifié
+
+- Rust : clippy + fmt + tests (input wiring, voice handlers + 13 tests
+  `fluence-voice` + smoke live Piper, urgence), `check-contracts` + spectral 0.
+- TS : SDK 18 tests ; web-client typecheck + eslint strict + 10 tests vitest +
+  build Vite. `cargo-deny` (nouvelles deps tower-http `fs`).
+
+### Intégration restante (dette)
+
+- Merge de la pile #32–#40 → hub assemblé → suite **Playwright T5** (personas) +
+  démo filmée + tags `phase-4-done`/`phase-5-done`. P0-scheduler D-3.3, opus +
+  streaming chunké (Phase 7), stockage chiffré des métriques (P2), fix de
+  génération TS de `InputClientMessage` (tag `k` perdu sur variantes newtype).
 
 ## Phase 4 — Le moteur : LLM réel (2026-06-13)
 
