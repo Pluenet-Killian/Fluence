@@ -22,6 +22,12 @@ heros = "heros"
 abord = "abord"
 # Bloc de contexte du moteur (§5.C) : « registre » de langue, pas « register ».
 registre = "registre"
+# Consigne anti-pathos du teacher et fichier de revue (§5.D) : prose FR.
+moteur = "moteur"
+exemple = "exemple"
+demandes = "demandes"
+symbole = "symbole"
+confirme = "confirme"
 
 [files]
 extend-exclude = [
