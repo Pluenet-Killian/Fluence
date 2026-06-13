@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /system/emergency` — raise or clear the emergency alert (D-7.4).\n\nRequires `control` scope (the user triggers it from the composer after a\ndouble confirmation, SPEC §7.A). The hub broadcasts\n[`SystemEvent::Emergency`] on the `system` topic and rings locally; the\nresulting state reaches the caller through that broadcast, so the call\nitself returns `204 No Content`.",
+  "properties": {
+    "active": {
+      "description": "Desired state: `true` raises the alert, `false` clears it.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "active"
+  ],
+  "title": "EmergencyRequest",
+  "type": "object"
+}

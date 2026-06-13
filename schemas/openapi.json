@@ -287,6 +287,19 @@
         ],
         "type": "object"
       },
+      "EmergencyRequest": {
+        "description": "`POST /system/emergency` — raise or clear the emergency alert (D-7.4).\n\nRequires `control` scope (the user triggers it from the composer after a\ndouble confirmation, SPEC §7.A). The hub broadcasts\n[`SystemEvent::Emergency`] on the `system` topic and rings locally; the\nresulting state reaches the caller through that broadcast, so the call\nitself returns `204 No Content`.",
+        "properties": {
+          "active": {
+            "description": "Desired state: `true` raises the alert, `false` clears it.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "type": "object"
+      },
       "ErrorCode": {
         "description": "Stable error codes (wire: `snake_case`).\n\nMarked `non_exhaustive` and tolerant on input ([`ErrorCode::Unknown`]):\nthe catalogue grows; clients fall back on `status` for codes they do not\nknow.",
         "oneOf": [
@@ -1897,6 +1910,30 @@
               "enabled"
             ],
             "type": "object"
+          },
+          {
+            "description": "Emergency alert raised or cleared by the user (SPEC §7.A, D-7.4).\nBroadcast to every paired client on the `system` topic: each shows a\nbanner, the main installation rings locally. Phase 5.4.",
+            "properties": {
+              "active": {
+                "description": "`true` raises the alert, `false` clears it.",
+                "type": "boolean"
+              },
+              "at": {
+                "description": "When the state last changed (hub clock).",
+                "format": "date-time",
+                "type": "string"
+              },
+              "k": {
+                "const": "system.emergency",
+                "type": "string"
+              }
+            },
+            "required": [
+              "k",
+              "active",
+              "at"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -3319,6 +3356,49 @@
           "display",
           "control",
           "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/system/emergency": {
+      "post": {
+        "operationId": "post_system_emergency",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmergencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Raise or clear the emergency alert (double-confirmed; D-7.4)",
+        "tags": [
+          "system"
+        ],
+        "x-fluence-scopes": [
+          "control"
         ],
         "x-fluence-stability": "stable"
       }
