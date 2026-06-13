@@ -20,6 +20,8 @@ sur = "sur"
 maintenant = "maintenant"
 heros = "heros"
 abord = "abord"
+# Bloc de contexte du moteur (§5.C) : « registre » de langue, pas « register ».
+registre = "registre"
 
 [files]
 extend-exclude = [
