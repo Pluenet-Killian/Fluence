@@ -202,18 +202,7 @@ impl LlmBackend for LlamaServerBackend {
         cancel: &CancelToken,
         sink: &mut dyn FnMut(&str),
     ) -> Result<GenerateOutcome, BackendError> {
-        // Use the chat-completions endpoint so `llama-server` applies the
-        // model's chat template (Gemma, Qwen, …): an instruction-tuned model
-        // needs its template to act as an instructor, not a free-form continuer
-        // — without it it rambles and echoes the prompt (#31). The assembled
-        // prompt (`fluence-accel`) becomes the user message; the template is the
-        // backend's concern, keeping the prompt model-agnostic.
-        let body = json!({
-            "messages": [{ "role": "user", "content": request.prompt }],
-            "max_tokens": request.max_tokens,
-            "temperature": GENERATE_TEMPERATURE,
-            "stream": true,
-        });
+        let body = generate_body(request);
         let reader = BufReader::new(self.open(&self.chat_url, &body, CallMode::Streaming)?);
 
         for line in reader.lines() {
@@ -297,6 +286,28 @@ impl LlmBackend for LlamaServerBackend {
 
 /// Folds raw token log-probabilities into a next-character distribution: sum the
 /// probability mass of every candidate token sharing a first character, keep the
+/// Builds the chat-completions request body for [`LlamaServerBackend::generate`].
+///
+/// The chat-completions endpoint makes `llama-server` apply the model's chat
+/// template (Gemma, Qwen, …): an instruction-tuned model needs its template to
+/// act as an instructor, not a free-form continuer — without it it rambles and
+/// echoes the prompt (#31). The assembled prompt (`fluence-accel`) becomes the
+/// user message, so the prompt stays model-agnostic.
+///
+/// Thinking is disabled (`enable_thinking=false`): a reasoning model (Gemma E4B)
+/// would otherwise spend the whole token budget in a hidden `thought` channel
+/// and stream little or no answer. It is a harmless no-op for models without a
+/// thinking template.
+fn generate_body(request: &GenerateRequest) -> Value {
+    json!({
+        "messages": [{ "role": "user", "content": request.prompt }],
+        "max_tokens": request.max_tokens,
+        "temperature": GENERATE_TEMPERATURE,
+        "stream": true,
+        "chat_template_kwargs": { "enable_thinking": false },
+    })
+}
+
 /// `top_k` heaviest characters, and renormalise so the result sums to 1.
 ///
 /// Robust to a misbehaving server: candidates whose probability is not finite (a
@@ -416,6 +427,21 @@ mod tests {
             .generate(&request, cancel, &mut |delta| out.push_str(delta))
             .expect("mock server responds");
         (out, outcome)
+    }
+
+    #[test]
+    fn generate_body_uses_chat_template_and_disables_thinking() {
+        let request = GenerateRequest {
+            prompt: "veu eau frache".to_owned(),
+            max_tokens: 32,
+        };
+        let body = generate_body(&request);
+        // Chat-completions shape (template applied by the server) …
+        assert_eq!(body["messages"][0]["role"], "user");
+        assert_eq!(body["messages"][0]["content"], "veu eau frache");
+        assert_eq!(body["stream"], true);
+        // … and thinking off, so a reasoning model answers instead of musing.
+        assert_eq!(body["chat_template_kwargs"]["enable_thinking"], false);
     }
 
     #[test]
