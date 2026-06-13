@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fluence_inference::{LlmBackend, UnavailableBackend};
+use fluence_inference::{CancelToken, LlmBackend, UnavailableBackend};
 use fluence_ngram::NgramModel;
 use fluence_protocol::api::pair::Scope;
 use fluence_store::{DraftWrite, Store};
@@ -165,6 +165,13 @@ struct Inner {
     /// The always-loaded n-gram fallback (D-2.6 « le clavier parle toujours »):
     /// serves predictions whenever the LLM backend is unavailable.
     fallback: Arc<NgramModel>,
+    /// Per-slot suggestion cancellation (§5.A: the debounce lives in the
+    /// server). Each `(session, slot)` maps to its in-flight generation's
+    /// token, tagged with a generation number so a finishing task clears only
+    /// its own entry, never a newer request's.
+    suggest_slots: Mutex<HashMap<(String, String), (u64, CancelToken)>>,
+    /// Monotonic source for suggestion-slot generations.
+    suggest_generation: AtomicU64,
 }
 
 /// Cheaply cloneable hub state.
@@ -212,6 +219,8 @@ impl AppState {
             ws_counters: Mutex::new(WsCounters::default()),
             engine,
             fallback,
+            suggest_slots: Mutex::new(HashMap::new()),
+            suggest_generation: AtomicU64::new(0),
         }))
     }
 
@@ -243,6 +252,33 @@ impl AppState {
     #[must_use]
     pub fn fallback(&self) -> &Arc<NgramModel> {
         &self.0.fallback
+    }
+
+    /// Registers a new suggestion on `(session, slot)`, cancelling any in-flight
+    /// one on the same slot (the per-slot debounce lives in the server, §5.A).
+    /// Returns the request's generation number and its cancellation token.
+    #[must_use]
+    pub fn supersede_slot(&self, session: &str, slot: &str) -> (u64, CancelToken) {
+        let generation = self.0.suggest_generation.fetch_add(1, Ordering::Relaxed);
+        let token = CancelToken::new();
+        let previous = lock(&self.0.suggest_slots).insert(
+            (session.to_owned(), slot.to_owned()),
+            (generation, token.clone()),
+        );
+        if let Some((_, previous_token)) = previous {
+            previous_token.cancel();
+        }
+        (generation, token)
+    }
+
+    /// Clears a slot once its generation ends — but only if it is still the
+    /// current one, so a newer in-flight request is never forgotten.
+    pub fn clear_slot(&self, session: &str, slot: &str, generation: u64) {
+        let mut slots = lock(&self.0.suggest_slots);
+        let key = (session.to_owned(), slot.to_owned());
+        if slots.get(&key).is_some_and(|(g, _)| *g == generation) {
+            slots.remove(&key);
+        }
     }
 
     /// Hub start time (health).
@@ -719,6 +755,52 @@ mod tests {
         assert!(
             state.try_acquire_ws("dev-fresh").is_none(),
             "the hub-wide ceiling caps total concurrency (F15)"
+        );
+    }
+
+    /// §5.A per-slot debounce: a new suggestion on the same slot cancels the
+    /// in-flight one. The previous token must trip.
+    #[tokio::test]
+    async fn superseding_a_slot_cancels_the_previous_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        let (_, first) = state.supersede_slot("s1", "main");
+        assert!(!first.is_cancelled());
+        let (_, _second) = state.supersede_slot("s1", "main");
+        assert!(
+            first.is_cancelled(),
+            "the previous same-slot request must be cancelled"
+        );
+    }
+
+    /// A different slot is independent: superseding `alt` never cancels `main`.
+    #[tokio::test]
+    async fn a_different_slot_is_not_cancelled() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        let (_, main_token) = state.supersede_slot("s1", "main");
+        let (_, _alt) = state.supersede_slot("s1", "alt");
+        assert!(!main_token.is_cancelled(), "a distinct slot is untouched");
+    }
+
+    /// A finishing task's `clear_slot` must not evict a newer request's token:
+    /// a stale clear is a no-op, so the current request stays cancellable.
+    #[tokio::test]
+    async fn a_stale_clear_does_not_drop_the_current_request() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+
+        let (stale_generation, _first) = state.supersede_slot("s1", "main");
+        let (_, current) = state.supersede_slot("s1", "main"); // cancels _first
+        state.clear_slot("s1", "main", stale_generation); // must be a no-op
+
+        // The current token is still tracked: a third request cancels it.
+        let (_, _third) = state.supersede_slot("s1", "main");
+        assert!(
+            current.is_cancelled(),
+            "a stale clear must not forget the current request"
         );
     }
 }

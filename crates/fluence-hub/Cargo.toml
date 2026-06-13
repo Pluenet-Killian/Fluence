@@ -16,6 +16,7 @@ axum = { version = "0.8.9", features = ["ws"] }
 base64 = "0.22.1"
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
 directories = "6.0.0"
+fluence-accel = { version = "0.0.0", path = "../fluence-accel" }
 fluence-inference = { version = "0.0.0", path = "../fluence-inference" }
 fluence-ipc = { version = "0.0.0", path = "../fluence-ipc" }
 fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
@@ -29,6 +30,7 @@ sha2 = "0.11.0"
 sysinfo = "0.38.4"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "signal", "net", "process", "time", "io-util", "sync", "fs"] }
+tokio-stream = "0.1.17"
 toml = "1.1.2"
 tower = "0.5.3"
 tower-http = { version = "0.6.11", features = ["cors"] }
