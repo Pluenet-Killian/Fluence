@@ -28,6 +28,21 @@ confidence-threshold = 0.93
 
 # Exceptions ciblées : une licence autorisée crate par crate, jamais globalement.
 [[licenses.exceptions]]
+# Nos propres applications (apps/) sont AGPL-3.0-only par conception (D-10.1).
+# L'AGPL n'est jamais acceptée pour une dépendance tierce — seulement pour
+# nos crates, par nom.
+name = "fluencectl"
+allow = ["AGPL-3.0-only"]
+
+[[licenses.exceptions]]
+# webpki-roots (bundle de certificats CA de Mozilla, tiré par le TLS de
+# ureq/tungstenite côté fluencectl) est sous CDLA-Permissive-2.0 — une
+# licence de *données* permissive (la liste de CA), sans contrainte sur
+# notre code. Sûre, vettée explicitement.
+name = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
+[[licenses.exceptions]]
 # option-ext (dépendance transitive de `directories`, via `dirs-sys`) est sous
 # MPL-2.0 — copyleft *au niveau fichier* : consommer la crate sans la modifier
 # n'impose rien à notre code. Sûr comme dépendance ; vetté ici explicitement

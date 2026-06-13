@@ -26,6 +26,55 @@
           }
         ]
       },
+      "AccessJournalEntry": {
+        "description": "One access-journal entry (SPEC §2.A, §9.A).",
+        "properties": {
+          "action": {
+            "description": "Stable action name (`pair.window_opened`, `device.paired`,\n`device.revoked`, `auth.rejected`…).",
+            "type": "string"
+          },
+          "at": {
+            "description": "When the action happened.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Non-P0 context (route, device kind…). Never user content.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_id": {
+            "description": "Acting device id, when the action was authenticated.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "at",
+          "action"
+        ],
+        "type": "object"
+      },
+      "AccessJournalResponse": {
+        "description": "`GET /system/journal` — the local access journal, shown in the\ncaregiver space (SPEC §2.A, §7.C). **Metadata only, never P0**\n(SPEC §9.A): entries describe access actions, never the content of a\nconversation, draft, or memory.",
+        "properties": {
+          "entries": {
+            "description": "Recent entries, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/AccessJournalEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
       "CapabilitiesResponse": {
         "description": "`GET /system/capabilities` — what this installation can do\n(hardware tier §3, available features).",
         "properties": {
@@ -3311,6 +3360,57 @@
         "x-fluence-scopes": [
           "display",
           "control",
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
+    "/api/v1/system/journal": {
+      "get": {
+        "operationId": "get_system_journal",
+        "parameters": [
+          {
+            "description": "Maximum entries to return (newest first; default 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessJournalResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Local access journal (caregiver space; metadata only)",
+        "tags": [
+          "system"
+        ],
+        "x-fluence-scopes": [
           "care"
         ],
         "x-fluence-stability": "stable"

@@ -404,6 +404,20 @@ pub fn routes() -> &'static [RouteSpec] {
         },
         RouteSpec {
             method: Get,
+            path: "/api/v1/system/journal",
+            summary: "Local access journal (caregiver space; metadata only)",
+            auth: RouteAuth::Scoped(&[Care]),
+            stability: Stable,
+            request: None,
+            response: Json("AccessJournalResponse"),
+            query: &[QueryParam {
+                name: "limit",
+                required: false,
+                description: "Maximum entries to return (newest first; default 100)",
+            }],
+        },
+        RouteSpec {
+            method: Get,
             path: "/ws",
             summary: "WebSocket upgrade — topics via ?topics=…&v=1 (scope-filtered)",
             auth: RouteAuth::Scoped(&[Display, Control, Care]),

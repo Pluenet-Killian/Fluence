@@ -84,6 +84,11 @@ pub const MOUNTED: &[MountedRoute] = &[
     },
     MountedRoute {
         method: "get",
+        path: "/api/v1/system/journal",
+        scopes: &[Scope::Care],
+    },
+    MountedRoute {
+        method: "get",
         path: "/ws",
         scopes: &[Scope::Display, Scope::Control, Scope::Care],
     },
@@ -123,10 +128,18 @@ pub fn build_router(state: AppState) -> Router {
             Scope::Care,
         ])));
 
+    // Caregiver-only surface (the access journal — SPEC §2.A/§7.C).
+    let care = Router::new()
+        .route("/api/v1/system/journal", get(system::journal))
+        .route_layer(axum::middleware::from_fn(auth::require_scope(&[
+            Scope::Care,
+        ])));
+
     let authed = Router::new()
         .merge(system_only)
         .merge(control)
         .merge(observers)
+        .merge(care)
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::require_token,
