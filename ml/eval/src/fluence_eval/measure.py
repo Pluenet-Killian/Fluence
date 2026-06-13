@@ -150,9 +150,9 @@ def cmd_measure(args: argparse.Namespace) -> int:
     delta = value_delta_points(rephrase.aggregate.ks_pct, ngram.aggregate.ks_pct)
     verdict = "PASS" if gate_passes(rephrase.aggregate.ks_pct, ngram.aggregate.ks_pct) else "FAIL"
     print(
-        f"\nvalue gate (#31): rephrase {rephrase.aggregate.ks_pct:.2f} − n-gram "
+        f"\nvalue gate (#31): rephrase {rephrase.aggregate.ks_pct:.2f} - n-gram "
         f"{ngram.aggregate.ks_pct:.2f} = {delta:+.2f} pts "
-        f"(need ≥ {GATE_POINTS:.0f}) → {verdict}"
+        f"(need >= {GATE_POINTS:.0f}) -> {verdict}"
     )
     return 0 if verdict == "PASS" else 1
 
