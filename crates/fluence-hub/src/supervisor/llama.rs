@@ -66,6 +66,10 @@ pub struct LlamaSpec {
     pub port: u16,
     /// Context window passed as `-c`.
     pub context_size: u32,
+    /// GPU layers to offload (`-ngl`); 0 = CPU only. A GPU build of
+    /// `llama-server` honours this (E4B is far faster offloaded); the CPU build
+    /// and the test fake ignore it.
+    pub gpu_layers: u32,
 }
 
 /// The LLM backend wrapped in a readiness gate.
@@ -229,6 +233,24 @@ async fn lifecycle(
     }
 }
 
+/// The `llama-server` CLI arguments for `spec`, extracted so they stay unit
+/// testable: model, loopback host/port, context window, and GPU offload.
+fn spawn_args(spec: &LlamaSpec) -> Vec<std::ffi::OsString> {
+    use std::ffi::OsString;
+    vec![
+        OsString::from("-m"),
+        spec.model.clone().into_os_string(),
+        OsString::from("--host"),
+        OsString::from("127.0.0.1"),
+        OsString::from("--port"),
+        OsString::from(spec.port.to_string()),
+        OsString::from("-c"),
+        OsString::from(spec.context_size.to_string()),
+        OsString::from("-ngl"),
+        OsString::from(spec.gpu_layers.to_string()),
+    ]
+}
+
 /// Runs one instance: spawn, wait for `/health`, then watch until it exits or a
 /// shutdown is requested. `on_ready` fires once, after the first healthy probe.
 async fn run_one_instance(
@@ -240,14 +262,7 @@ async fn run_one_instance(
     // stdout/stderr go to the void on purpose: llama-server can log prompt and
     // completion text, which is P0 — it must never reach our logs (§9.A).
     let mut child = match Command::new(&spec.command)
-        .arg("-m")
-        .arg(&spec.model)
-        .arg("--host")
-        .arg("127.0.0.1")
-        .arg("--port")
-        .arg(spec.port.to_string())
-        .arg("-c")
-        .arg(spec.context_size.to_string())
+        .args(spawn_args(spec))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -372,5 +387,29 @@ mod tests {
             backend.next_chars("x", 4),
             Err(BackendError::Unavailable(_))
         ));
+    }
+
+    #[test]
+    fn spawn_args_pass_model_port_context_and_gpu_layers() {
+        let spec = LlamaSpec {
+            command: PathBuf::from("llama-server"),
+            model: PathBuf::from("/models/m.gguf"),
+            port: 8099,
+            context_size: 4096,
+            gpu_layers: 99,
+        };
+        let args: Vec<String> = spawn_args(&spec)
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        // GPU offload must flow through, else the GPU tier silently runs on CPU.
+        let ngl = args.iter().position(|a| a == "-ngl").expect("-ngl present");
+        assert_eq!(args[ngl + 1], "99");
+        assert!(args.windows(2).any(|w| w[0] == "--port" && w[1] == "8099"));
+        assert!(args.windows(2).any(|w| w[0] == "-c" && w[1] == "4096"));
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "-m" && w[1] == "/models/m.gguf")
+        );
     }
 }

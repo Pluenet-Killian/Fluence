@@ -311,6 +311,7 @@ fn build_llama_engine(config: &HubConfig) -> Result<Option<LlamaEngine>, HubErro
         model,
         port,
         context_size: config.llama_context_size,
+        gpu_layers: config.llama_gpu_layers,
     };
     Ok(Some((backend, spec, ready)))
 }
