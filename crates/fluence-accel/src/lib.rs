@@ -12,8 +12,21 @@
 //! Agency rule (§5): the system speaks *like the person*, never instead of
 //! her — every suggestion is editable and rejectable in one gesture.
 //!
-//! PLAN Phase 4 builds context assembly and the `rephrase`/`continue`
-//! prompts. This crate intentionally stays empty until then.
+//! PLAN Phase 4 (4.4) lands context assembly (blocks 1/4/5 — memory and the
+//! rolling summary are the §5.B subsystem, P2) and the v0 `rephrase`/`continue`
+//! prompts, plus post-processing. The pieces are pure functions: the hub
+//! composes them with an `LlmBackend` and owns per-slot cancellation.
+
+mod postprocess;
+mod prompt;
+mod tokens;
+
+pub use postprocess::clean_suggestions;
+pub use prompt::{
+    AssembledPrompt, ContextParts, ContextTurn, DEFAULT_BUDGET_TOKENS, Speaker, StyleProfile,
+    assemble, relative_label,
+};
+pub use tokens::estimate_tokens;
 
 #[cfg(test)]
 mod tests {

@@ -10,3 +10,6 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }

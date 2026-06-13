@@ -520,6 +520,9 @@ dependencies = [
 [[package]]
 name = "fluence-accel"
 version = "0.0.0"
+dependencies = [
+ "fluence-protocol",
+]
 
 [[package]]
 name = "fluence-hub"
