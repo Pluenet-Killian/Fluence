@@ -5,7 +5,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
-## Phase 5 — La boucle complète (features livrées — 2026-06-14)
+## Phase 5 — La boucle complète (intégrée sur `main` — 2026-06-14)
 
 ### Ajouté
 
@@ -43,11 +43,17 @@ définis en SPEC D-12.2).
 - TS : SDK 18 tests ; web-client typecheck + eslint strict + 10 tests vitest +
   build Vite. `cargo-deny` (nouvelles deps tower-http `fs`).
 
-### Intégration restante (dette)
+### Intégré
 
-- Merge de la pile #32–#40 → hub assemblé → suite **Playwright T5** (personas) +
-  démo filmée + tags `phase-4-done`/`phase-5-done`. P0-scheduler D-3.3, opus +
-  streaming chunké (Phase 7), stockage chiffré des métriques (P2), fix de
+- Pile #32–#40 fusionnée sur `main` via **#41** (`c61ab06`) après résolution des
+  conflits hub sur une branche d'intégration unique (contrats/`api.d.ts`
+  régénérés, jamais fusionnés à la main). Tag **`phase-4-done`** posé.
+
+### Reste (dette)
+
+- Suite **Playwright T5** (personas) dans `integration.yml` contre le hub
+  assemblé + démo filmée reproductible → tag `phase-5-done`. P0-scheduler D-3.3,
+  opus + streaming chunké (Phase 7), stockage chiffré des métriques (P2), fix de
   génération TS de `InputClientMessage` (tag `k` perdu sur variantes newtype).
 
 ## Phase 4 — Le moteur : LLM réel (2026-06-13)
