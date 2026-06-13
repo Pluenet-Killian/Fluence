@@ -19,6 +19,7 @@ mod backend;
 
 pub use backend::{
     BackendError, CancelToken, GenerateOutcome, GenerateRequest, LlmBackend, StubBackend,
+    UnavailableBackend,
 };
 
 #[cfg(test)]

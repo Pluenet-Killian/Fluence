@@ -16,7 +16,9 @@ axum = { version = "0.8.9", features = ["ws"] }
 base64 = "0.22.1"
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
 directories = "6.0.0"
+fluence-inference = { version = "0.0.0", path = "../fluence-inference" }
 fluence-ipc = { version = "0.0.0", path = "../fluence-ipc" }
+fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
 fluence-store = { version = "0.0.0", path = "../fluence-store" }
 rand = "0.10.1"
@@ -35,7 +37,10 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "jso
 uuid = { version = "1.23.3", features = ["v4"] }
 
 [dev-dependencies]
+fluence-inference = { version = "0.0.0", path = "../fluence-inference" }
+fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
 sysinfo = "0.38.4"
 tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }
 tungstenite = "0.29.0"
 ureq = { version = "3.3.0", features = ["json"] }

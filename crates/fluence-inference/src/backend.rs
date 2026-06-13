@@ -161,6 +161,35 @@ impl LlmBackend for StubBackend {
     }
 }
 
+/// A backend that is always unavailable — the hub's default until a real
+/// `worker-llm` is configured, so every request degrades to the n-gram
+/// fallback (D-2.6 « le clavier parle toujours ») instead of failing.
+#[derive(Debug, Clone, Default)]
+pub struct UnavailableBackend;
+
+impl LlmBackend for UnavailableBackend {
+    fn id(&self) -> &'static str {
+        "unavailable"
+    }
+
+    fn generate(
+        &self,
+        _request: &GenerateRequest,
+        _cancel: &CancelToken,
+        _sink: &mut dyn FnMut(&str),
+    ) -> Result<GenerateOutcome, BackendError> {
+        Err(BackendError::Unavailable(
+            "no LLM worker configured".to_owned(),
+        ))
+    }
+
+    fn next_chars(&self, _context: &str, _top_k: usize) -> Result<Vec<CharProb>, BackendError> {
+        Err(BackendError::Unavailable(
+            "no LLM worker configured".to_owned(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +263,22 @@ mod tests {
         assert!(!token.is_cancelled());
         token.cancel();
         assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn unavailable_backend_errors_on_every_path() {
+        let backend = UnavailableBackend;
+        let request = GenerateRequest {
+            prompt: "x".to_owned(),
+            max_tokens: 8,
+        };
+        assert!(matches!(
+            backend.generate(&request, &CancelToken::new(), &mut |_| {}),
+            Err(BackendError::Unavailable(_))
+        ));
+        assert!(matches!(
+            backend.next_chars("x", 4),
+            Err(BackendError::Unavailable(_))
+        ));
     }
 }
