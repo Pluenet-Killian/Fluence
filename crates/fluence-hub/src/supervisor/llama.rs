@@ -45,6 +45,14 @@ use crate::events::EventBus;
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
 /// How often `/health` is polled while waiting for readiness.
 const HEALTH_POLL_PERIOD: Duration = Duration::from_millis(250);
+/// How often `/health` is probed once the instance is serving. A wedged server
+/// (alive but no longer answering) is caught within
+/// `LIVENESS_PROBE_PERIOD × LIVENESS_MAX_FAILURES`.
+const LIVENESS_PROBE_PERIOD: Duration = Duration::from_secs(2);
+/// Consecutive failed liveness probes before the instance is declared wedged
+/// and restarted. Greater than one so a single transient blip does not bounce
+/// an otherwise healthy server.
+const LIVENESS_MAX_FAILURES: u32 = 3;
 
 /// What to spawn for the LLM backend.
 #[derive(Debug, Clone)]
@@ -281,14 +289,43 @@ async fn run_one_instance(
     ready.store(true, Ordering::Release);
     on_ready();
 
-    tokio::select! {
-        exit = child.wait() => InstanceOutcome::Died(match exit {
-            Ok(status) => format!("process exited: {status}"),
-            Err(error) => format!("wait failed: {error}"),
-        }),
-        _ = shutdown.changed() => {
-            let _ = child.kill().await;
-            InstanceOutcome::ShutdownRequested
+    // Serving. Watch for the three ways the instance stops being usable: it
+    // exits, a shutdown is requested, or it *wedges* — stays alive but stops
+    // answering `/health`. A dead-process watch (`child.wait()`) never fires for
+    // a live-but-wedged server, so a periodic liveness probe is the only way to
+    // notice; after enough consecutive failures we restart it so `/suggest`
+    // degrades to the n-gram fallback rather than stalling (D-2.6).
+    let mut probe = tokio::time::interval(LIVENESS_PROBE_PERIOD);
+    probe.tick().await; // the first tick is immediate — consume it
+    let mut consecutive_failures = 0u32;
+    loop {
+        tokio::select! {
+            exit = child.wait() => {
+                return InstanceOutcome::Died(match exit {
+                    Ok(status) => format!("process exited: {status}"),
+                    Err(error) => format!("wait failed: {error}"),
+                });
+            }
+            _ = shutdown.changed() => {
+                let _ = child.kill().await;
+                return InstanceOutcome::ShutdownRequested;
+            }
+            _ = probe.tick() => {
+                if is_healthy(&backend).await {
+                    consecutive_failures = 0;
+                } else {
+                    consecutive_failures += 1;
+                    if consecutive_failures >= LIVENESS_MAX_FAILURES {
+                        // Stop serving immediately, then kill the wedged process
+                        // so the lifecycle loop restarts it under backoff.
+                        ready.store(false, Ordering::Release);
+                        let _ = child.kill().await;
+                        return InstanceOutcome::Died(format!(
+                            "health probe failed {consecutive_failures}× (wedged)"
+                        ));
+                    }
+                }
+            }
         }
     }
 }

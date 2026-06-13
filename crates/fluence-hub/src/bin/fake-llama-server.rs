@@ -9,15 +9,19 @@
 //! token log-probabilities otherwise). It ignores `-m`/`-c` and binds the
 //! `--port` the hub assigns.
 //!
-//! Two env hooks let a test drive its lifecycle:
+//! Three env hooks let a test drive its lifecycle:
 //! - `FLUENCE_FAKE_LLAMA_PIDFILE` — where to write its pid, so a test can kill
 //!   it to exercise crash → graceful degradation (D-2.6);
 //! - `FLUENCE_FAKE_LLAMA_DIE_IF_EXISTS` — if that path exists at startup, exit
-//!   immediately, so a test can make a restart fail and keep the engine down.
+//!   immediately, so a test can make a restart fail and keep the engine down;
+//! - `FLUENCE_FAKE_LLAMA_WEDGE_IF_EXISTS` — if that path exists, `GET /health`
+//!   accepts the probe but never replies (the process stays alive but stops
+//!   serving), so a test can exercise the supervisor's liveness probe.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::Duration;
 
 fn main() {
     // A test can make respawns fail (keeping the engine down) by creating this
@@ -47,6 +51,12 @@ fn parse_port() -> Option<u16> {
         }
     }
     None
+}
+
+/// Whether the wedge marker exists — makes `/health` hang (see module docs).
+fn wedged() -> bool {
+    std::env::var_os("FLUENCE_FAKE_LLAMA_WEDGE_IF_EXISTS")
+        .is_some_and(|path| std::path::Path::new(&path).exists())
 }
 
 /// Serves one request, then closes the connection.
@@ -83,6 +93,13 @@ fn handle(mut stream: TcpStream) {
 
     let path = request_line.split_whitespace().nth(1).unwrap_or("/");
     if path.starts_with("/health") {
+        if wedged() {
+            // Alive but wedged: accept the probe and never reply, so the hub's
+            // health timeout fires and its liveness probe eventually restarts
+            // us (D-2.6). Hold the socket a bounded while, then drop.
+            thread::sleep(Duration::from_secs(60));
+            return;
+        }
         respond(
             &mut stream,
             "200 OK",
