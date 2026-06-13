@@ -94,6 +94,15 @@ jobs:
         run: uv run --directory ml ruff format --check .
       - name: Mypy (strict)
         run: uv run --directory ml mypy .
+      # The harness measures the real fluence-ngram crate, not a reimplementation
+      # (SPEC §8.A, ADR-0006): build its binary so the n-gram sanity test runs
+      # here rather than skipping. The crate only depends on serde — no NASM /
+      # OpenSSL, so this is a fast, system-dependency-free build.
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the n-gram binary (eval prediction source)
+        run: cargo build -p fluence-ngram
       - name: Pytest
         run: uv run --directory ml pytest
 

@@ -90,3 +90,25 @@ Forces en tension :
   mais implémentée en Phase 4 quand le modèle d'embeddings arrive (le v0 ne mesure que
   les modes lettre-à-lettre et prédiction, lexicaux et déterministes).
 - **SPEC** : inchangée. Le staging v0→v1 est documenté ici et dans le journal PLAN §5.
+
+## Amendement (2026-06-13) — binding par serveur subprocess plutôt que PyO3
+
+La décision A2 (binding **PyO3/maturin**) est remplacée par un **serveur
+subprocess** : le crate `fluence-ngram` expose un binaire `serve` (protocole
+JSON-lines `train`/`complete` sur stdin/stdout), que `ml/eval` pilote via un
+processus persistant (`fluence_eval.ngram.NgramServer`).
+
+**Pourquoi** : PyO3/maturin imposait de bâtir une extension native *dans le job
+CI Python* (toolchain Rust + maturin, Windows + Linux) et se heurtait au blocage
+Vanguard des lanceurs uv en local — donc non testable sur la machine de dev. Le
+serveur subprocess ne demande qu'un `cargo build -p fluence-ngram` (déjà trivial
+en CI, et **testable localement** sans toucher uv), et l'éval mesure toujours le
+**vrai crate** — l'esprit de la décision A (pas de réimplémentation) est tenu.
+
+**Conséquences** : le job CI Python gagne une étape `cargo build -p
+fluence-ngram` (le crate ne dépend que de serde — pas de NASM/OpenSSL) ; en
+l'absence du binaire (checkout non bâti), `NgramSource` est sauté proprement
+(`locate_ngram_binary` → `None`), le reste du harnais (Python pur) est intact.
+Le contexte de bigramme passera par le champ `context` du protocole (déjà
+toléré). Si un jour la performance du pipe pose problème, PyO3 reste une option
+de repli — l'API de `NgramModel` ne change pas.
