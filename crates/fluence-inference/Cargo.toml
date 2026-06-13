@@ -14,3 +14,7 @@ workspace = true
 [dependencies]
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
 thiserror = "2.0.18"
+# Pure-Rust HTTP client for the supervised `llama-server` subprocess (ADR-0007
+# amendment). No default features: TLS is dropped — we only talk loopback HTTP.
+ureq = { version = "3.3.0", default-features = false }
+serde_json = "1.0.150"

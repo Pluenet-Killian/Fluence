@@ -76,3 +76,35 @@ supervisé), pas de l'évitement du FFI. Le FFI in-process est donc acceptable
   `LlmBackend` ne change pas (un `ServerBackend` l'implémenterait).
 - **SPEC** : inchangée (D-3.1 prévoyait déjà la cascade ; ceci en précise le
   binding, niveau d'exécution).
+
+## Amendement (2026-06-13) — le sous-processus `llama-server` devient principal
+
+La décision A1 (FFI `llama-cpp-2`) est **rétrogradée en repli** ; le **sous-
+processus `llama-server`** (ex-option A3, ex-repli) devient la **réalisation
+principale** du backend local.
+
+**Pourquoi (audité)** :
+- **Build FFI bloqué sur la machine de dev** : `llama-cpp-sys-2` ne gère pas la
+  cible `x86_64-pc-windows-gnu` (msys2/UCRT) — son `build.rs` cherche des `.lib`
+  MSVC et trouve 0 lib MinGW (`.a`) → `assert_ne!(libs.len(), 0)` échoue (après
+  avoir réglé le faux `#error cpp-httplib` via `-D_WIN32_WINNT=0x0A00`). Non
+  compilable/testable en local ; la CI Windows étant MSVC, divergence dangereuse
+  pour un backend FFI.
+- **`llama-server` n'a aucun de ces défauts** : binaire **officiel** prébuilt
+  (indépendant du toolchain Rust), donc compile-free, **testable en local** sur
+  windows-gnu (PoC validé : `/health` ok, `/completion` génère), CI portable
+  (télécharger binaire + tiny-LLM, pas de compilation C++), **isolation crash
+  intrinsèque** (c'est un processus séparé — D-2.6), API complète (streaming
+  `/completion`, logprobs `n_probs` → `next-chars`). Risque nul pour les builds
+  gnu existants (pur client HTTP Rust).
+
+**Décision** : `LlamaServerBackend` (client HTTP `ureq`, pur Rust, **pas de
+feature native**) implémente `LlmBackend` ; le hub spawn/supervise `llama-server`
+comme processus enfant et lui parle en HTTP loopback ; la gestion de modèles
+(4.3) télécharge le binaire + le tiny-LLM (manifeste + sha256). Le FFI
+`llama-cpp-2` reste une optimisation future (contrôle KV plus fin) si jamais le
+HTTP loopback devient un goulot — le trait `LlmBackend` ne change pas.
+
+**Conséquences** : aucune compilation C++ dans notre build/CI (gain de fiabilité
+et de portabilité majeur) ; un binaire + un modèle à télécharger et vérifier
+(4.3) ; le surcoût HTTP loopback est négligeable devant les budgets §5.A.
