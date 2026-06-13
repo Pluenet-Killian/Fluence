@@ -33,4 +33,8 @@ extend-exclude = [
     "*.yml",
     "*.yaml",
     "*.lock",
+    # Curated French vocabulary data (the n-gram fallback base): a word list,
+    # not English code or prose — the English typo dictionary only yields false
+    # positives here (toi, celle, sais, chambre, fils…).
+    "crates/fluence-ngram/data/",
 ]

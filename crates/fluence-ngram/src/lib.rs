@@ -10,14 +10,19 @@
 //! v0 is a word-frequency (unigram) model: completions of a prefix ranked by
 //! frequency, plus a next-character distribution for adaptive scanning (the
 //! `next-chars` contract). It trains from text (the synthetic corpus, free
-//! frequency lists) and (de)serialises as compact JSON. Bigram context and a
-//! shipped French base vocabulary are later refinements; the API is the
-//! prediction-source surface they will keep.
+//! frequency lists) and (de)serialises as compact JSON. A hand-curated French
+//! base vocabulary ships now ([`NgramModel::french_base`], the hub's always-on
+//! fallback); bigram context and the teacher-corpus expansion (#18) are later
+//! refinements the prediction-source API will keep.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+/// The embedded French base vocabulary, most-frequent first
+/// (`data/french_base_words.txt`); [`NgramModel::french_base`] builds from it.
+const FRENCH_BASE_WORDS: &str = include_str!("../data/french_base_words.txt");
 
 /// A word-frequency model. Iteration order is deterministic (sorted keys), so
 /// predictions and serialisation are reproducible.
@@ -52,6 +57,47 @@ impl NgramModel {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The always-loaded French base model (D-2.6 « le clavier parle toujours »):
+    /// what the hub predicts from whenever the LLM worker is down, so the
+    /// keyboard keeps offering completions instead of nothing.
+    ///
+    /// Built from an embedded, hand-curated frequency list — a v0 base the
+    /// teacher corpus (#18) later expands. Cheap enough to build once at boot.
+    #[must_use]
+    pub fn french_base() -> Self {
+        Self::from_ranked(FRENCH_BASE_WORDS.lines())
+    }
+
+    /// Builds a model from words listed **most-frequent first**, weighting each
+    /// by its rank (linear, strictly decreasing) so completions rank by
+    /// frequency rather than alphabetically. Blank lines and `#` comments are
+    /// skipped and words are lowercased; a repeated word keeps its first
+    /// (highest) rank.
+    #[must_use]
+    pub fn from_ranked<'a>(words: impl IntoIterator<Item = &'a str>) -> Self {
+        let ranked: Vec<String> = words
+            .into_iter()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_lowercase)
+            .collect();
+        let mut model = Self::new();
+        for (index, word) in ranked.iter().enumerate() {
+            if model.counts.contains_key(word) {
+                continue; // keep the first (highest) rank of a repeated word
+            }
+            let count = (ranked.len() - index) as u64;
+            model.add_word(word, count);
+        }
+        model
+    }
+
+    /// Adds `count` occurrences of an already-tokenised, lowercased `word`.
+    fn add_word(&mut self, word: &str, count: u64) {
+        *self.counts.entry(word.to_owned()).or_insert(0) += count;
+        self.total += count;
     }
 
     /// Counts the words of `text` into the model (whitespace-split, lowercased,
@@ -237,5 +283,58 @@ mod tests {
         let restored = NgramModel::from_json(&model.to_json().unwrap()).unwrap();
         assert_eq!(restored.vocabulary_size(), model.vocabulary_size());
         assert_eq!(restored.complete("vou", 1), model.complete("vou", 1));
+    }
+
+    #[test]
+    fn french_base_is_a_useful_nonempty_model() {
+        let model = NgramModel::french_base();
+        assert!(!model.is_empty(), "the fallback must not be empty (D-2.6)");
+        assert!(
+            model.vocabulary_size() > 150,
+            "the curated base should hold a few hundred words, got {}",
+            model.vocabulary_size()
+        );
+    }
+
+    #[test]
+    fn french_base_completes_common_prefixes() {
+        let model = NgramModel::french_base();
+        // Where the empty model offered nothing, the base completes a common
+        // prefix — and a frequent word is among the offers.
+        let bon = model.complete("bon", 3);
+        assert!(!bon.is_empty(), "the base must complete a common prefix");
+        assert!(
+            bon.iter().any(|c| c.word == "bonjour"),
+            "expected 'bonjour' among completions of 'bon', got {bon:?}"
+        );
+        // A care word the personas need.
+        assert!(
+            !model.complete("aid", 1).is_empty(),
+            "'aid' should complete"
+        );
+    }
+
+    #[test]
+    fn french_base_next_char_distribution_is_nonempty() {
+        // Degraded adaptive dwell still needs a distribution to modulate on.
+        let model = NgramModel::french_base();
+        let dist = model.next_char_dist("po");
+        assert!(
+            !dist.is_empty(),
+            "a common prefix must yield next characters"
+        );
+        let total: f64 = dist.iter().map(|(_, p)| p).sum();
+        assert!((total - 1.0).abs() < 1e-9, "must sum to 1, got {total}");
+    }
+
+    #[test]
+    fn from_ranked_weights_earlier_words_higher_and_dedupes() {
+        // "alpha" leads, then "beta", then a repeat of "alpha": the repeat is
+        // ignored so "alpha" keeps its top weight and ranks first.
+        let model = NgramModel::from_ranked(["alpha", "beta", "alpha", "# skip", ""]);
+        assert_eq!(model.vocabulary_size(), 2);
+        let top = model.complete("", 2);
+        assert_eq!(top[0].word, "alpha", "the earliest-ranked word ranks first");
+        assert_eq!(top[1].word, "beta");
     }
 }

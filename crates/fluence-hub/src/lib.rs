@@ -122,7 +122,15 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
         Some((engine, _, _)) => engine.clone(),
         None => Arc::new(UnavailableBackend),
     };
-    let state = AppState::new_with(config, store, bus, engine, Arc::new(NgramModel::new()));
+    // The always-loaded French base n-gram (D-2.6): when the LLM is down the
+    // keyboard still predicts from this, never an empty fallback.
+    let state = AppState::new_with(
+        config,
+        store,
+        bus,
+        engine,
+        Arc::new(NgramModel::french_base()),
+    );
     state.spawn_draft_flusher();
     state.spawn_draft_purger();
 
