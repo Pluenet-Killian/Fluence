@@ -15,6 +15,10 @@ use serde::Deserialize;
 /// Default API port (SPEC §2.A).
 pub const DEFAULT_PORT: u16 = 7411;
 
+/// Default `llama-server` context window (tokens). Comfortably above the
+/// context-assembly budget (§5.C, ≤ 2200 tokens) plus a generation margin.
+pub const DEFAULT_LLAMA_CONTEXT: u32 = 4096;
+
 /// Complete hub configuration.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -37,6 +41,15 @@ pub struct HubConfig {
     /// Command to launch the echo worker (test harness). Real worker
     /// commands join this table in Phase 4+.
     pub echo_worker_command: Option<PathBuf>,
+    /// Path to the `llama-server` binary (llama.cpp). When set together with
+    /// [`Self::llama_model_path`], the hub spawns and supervises it as the LLM
+    /// backend (Phase 4.2, ADR-0007); otherwise the engine stays unavailable
+    /// and suggestions degrade to the n-gram fallback (D-2.6).
+    pub llama_server_command: Option<PathBuf>,
+    /// Path to the GGUF model `llama-server` loads.
+    pub llama_model_path: Option<PathBuf>,
+    /// Context window passed to `llama-server` (`-c`).
+    pub llama_context_size: u32,
 }
 
 impl Default for HubConfig {
@@ -48,6 +61,9 @@ impl Default for HubConfig {
             store_key_file: None,
             household_name: "Fluence".to_owned(),
             echo_worker_command: None,
+            llama_server_command: None,
+            llama_model_path: None,
+            llama_context_size: DEFAULT_LLAMA_CONTEXT,
         }
     }
 }
@@ -146,6 +162,19 @@ impl HubConfig {
         }
         if let Some(value) = lookup("FLUENCE_ECHO_WORKER") {
             self.echo_worker_command = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_LLAMA_SERVER_BIN") {
+            self.llama_server_command = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_LLAMA_MODEL") {
+            self.llama_model_path = Some(PathBuf::from(value));
+        }
+        if let Some(value) = lookup("FLUENCE_LLAMA_CONTEXT") {
+            self.llama_context_size = value.parse().map_err(|e| ConfigError::InvalidEnv {
+                name: "FLUENCE_LLAMA_CONTEXT",
+                value,
+                reason: format!("{e}"),
+            })?;
         }
         Ok(())
     }

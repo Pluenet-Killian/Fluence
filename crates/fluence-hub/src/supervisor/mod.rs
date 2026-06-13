@@ -20,6 +20,7 @@
 //! catches the other failure mode: a process that is alive but wedged.
 
 mod backoff;
+mod llama;
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -34,6 +35,7 @@ use tokio::time::timeout;
 
 pub use backoff::Backoff;
 use fluence_ipc::{HubToWorker, IPC_PROTOCOL_VERSION, IpcEndpoint, WorkerToHub};
+pub use llama::{LlamaSpec, SupervisedLlama, supervise_llama_server};
 
 use crate::events::EventBus;
 
