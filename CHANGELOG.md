@@ -36,6 +36,29 @@ définis en SPEC D-12.2).
   restauré, perte ≤ 1 s ; 50 cycles kill/restart → RSS stable (±10 %) ;
   démarrage → prêt < 3 s ; aucun contenu P0 dans les logs (bout en bout).
 
+### Durci (audit adverse — §2.C « le clavier parle toujours », §9.A « zéro P0 »)
+
+- **Durabilité du draft (F01)** : le flush ne vide plus le buffer *avant*
+  l'écriture — il snapshote, écrit par lot, puis ne retire que ce que le
+  store a confirmé (et seulement si aucune frappe plus récente n'est
+  arrivée). Sur erreur du store, tout reste bufferisé pour le tick suivant :
+  une frappe acquittée ne peut plus disparaître à la fois de la RAM et du
+  disque (D-2.6).
+- **Bornes de ressources contre un appareil appairé hostile (F09, F15, G7)** :
+  cap du texte de draft (64 KiB, rejeté *avant* de devenir un `SecretString`,
+  sans P0 dans le 422) ; cap des sessions non flushées en RAM (le dépassement
+  force un flush immédiat, jamais une perte ni un blocage de frappe) ; purge
+  disque des drafts inactifs > 7 jours via un index de récence (migration
+  store v2) ; plafonds de connexions `/ws` par appareil (8) et globaux (128),
+  réservés avant l'upgrade et libérés par une garde RAII sur tout chemin de
+  sortie ; plafond explicite du corps de requête (512 KiB).
+- **Dégradation honnête au démarrage (F06, F07, G2, F30)** : avertissement à
+  chaque boot si la clé du store est un fichier en clair (escaladé s'il
+  jouxte `store.db`) ; le fichier system-token est écrit *avant* la ligne
+  d'appareil (pas d'appareil `system` orphelin re-créé à chaque tentative) ;
+  un échec d'étape d'installation (dossier de données, token, `chmod 0600`)
+  remonte en `HubError::Setup` au lieu d'être avalé ou mal étiqueté.
+
 ## Phase 1 — Le contrat (2026-06-13)
 
 ### Ajouté

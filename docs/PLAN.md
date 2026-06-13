@@ -117,9 +117,9 @@
 - T6 : démarrage hub → ready **< 3 s** (provisional ×2,5 en CI GitHub) ; soak court nightly : 30 min de churn (appairages, WS connect/disconnect, kills aléatoires d'echo-workers) sans fuite fd/RSS.
 
 **Done quand**
-- [ ] Démo scriptée : `fluencectl pair` depuis une 2e machine (ou conteneur) + kill -9 du worker echo en boucle → le hub reste sain, les événements arrivent.
-- [ ] Tous les kill-tests passent sur Win + Linux en CI.
-- [ ] Journal d'accès consultable ; zéro P0 dans les logs (test + revue).
+- [x] Démo scriptée : `fluencectl pair` depuis une 2e machine (ou conteneur) + kill -9 du worker echo en boucle → le hub reste sain, les événements arrivent. *(`docs/demos/phase2-hub.md`, couvert mécaniquement par `apps/cli/tests/cli_against_hub.rs`.)*
+- [x] Tous les kill-tests passent sur Win + Linux en CI. *(`crates/fluence-hub/tests/kill_tests.rs` ; jobs `rust (ubuntu/windows-latest)` verts sur PR #7 et #9.)*
+- [x] Journal d'accès consultable ; zéro P0 dans les logs (test + revue). *(`GET /api/v1/system/journal` scope `care` ; redaction P0 par `SecretString` + denylist, test bout en bout.)*
 
 ---
 
@@ -265,7 +265,7 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 |---|---|---|---|
 | 0 — Usine | ✅ terminée (2026-06-13) | `phase-0-done` | 4 workflows verts Win+Linux ; vérifications « l'usine se teste » passées ; détails session 1 |
 | 1 — Contrat | ✅ terminée (2026-06-13) | `phase-1-done` | contrat v1 complet + chaîne anti-dérive + SDK v0 + doc Pages + couverture ; détails session 2 |
-| 2 — Hub & supervision | ⬜ | — | |
+| 2 — Hub & supervision | ✅ terminée (2026-06-13) | `phase-2-done` | hub vital (bootstrap < 3 s, store SQLCipher, IPC, appairage/scopes/CORS, superviseur + kill-tests Win+Linux, WS par topics, autosave draft, `fluencectl` v0, journal d'accès) + durcissement audit adverse (F01/F06/F09/F15/G2/G7…) ; **différés en dette** : mode foyer TLS+mDNS (#10), fuzz+soak (#11) ; détails session 3 |
 | 3 — Boussole | ⬜ | — | |
 | 4 — Moteur | ⬜ | — | |
 | 5 — Boucle complète | ⬜ | — | |
@@ -275,6 +275,14 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
 
 ### Journal de session
+
+**Session 3 — 2026-06-13 — Phase 2 complète.**
+- **Fait** (PR #7 squelette vital, #8 `fluencectl` + journal, #9 durcissement) : `fluence-hub` assemble le cœur toujours-vivant de D-2.6 — bootstrap < 3 s (config TOML+env, port 7411 + repli dynamique), `tracing` à redaction P0 (`SecretString` + denylist de champs), arrêt propre ; `fluence-store` SQLCipher (acteur mono-thread, WAL+`synchronous=FULL`, migrations sur `user_version`, tokens hashés SHA-256, journal d'accès sans P0) ; `fluence-ipc` (frames JSON préfixées longueur, cap 16 MiB, UDS/named pipes) ; appairage (fenêtre 2 min, code usage unique, brute-force → 429), tokens à scopes, CORS allowlist, 401 uniforme ; superviseur (backoff+jitter, `system.degraded`) ; WS `/ws` par topics filtrés par scope ; autosave draft. **kill-tests** verts Win+Linux (worker tué → `degraded` < 500 ms ; hub -9 en frappe → draft restauré perte ≤ 1 s ; 50 cycles → RSS stable). `fluencectl` v0 (health/pair/watch/journal) en client de l'API publique (D-2.1). `GET /system/journal` (scope `care`) via la chaîne anti-dérive.
+- **Audit adverse → durcissement** (`docs/audits/phase2-hub-vital.md`, PR #9) : chaque finding re-vérifié dans le code puis corrigé en bug=test-rouge-d'abord. **F01** (le flush vidait le buffer avant l'écriture → frappe perdue sur erreur store) corrigé en flush non destructif (snapshot → upsert lot → retrait conditionnel à la génération). Bornes anti-épuisement par un appareil appairé hostile : **F09** (cap texte 64 KiB, cap sessions RAM → flush, purge TTL 7 j + index v2), **F15** (plafonds `/ws` 8/appareil & 128 global, garde RAII), **G7** (corps requête 512 KiB). Dégradation honnête : **F06** (clé en clair signalée au boot), **G2** (token écrit avant l'appareil), **F07/F30** (échec FS/chmod → `HubError::Setup`). **F10/F20/F26** confirmés déjà couverts (tombstone+génération, flush par lot, journal borné).
+- **Découvertes notables** : `keyring` tirait D-Bus (libdbus) en CI Linux → déplacé en dépendance `cfg(windows)` (DPAPI), le hub headless Linux utilise la clé fichier par défaut (amendement SPEC D-9.1 + ADR-0005 §9). OpenSSL/SQLCipher vendored exigent `nasm` sur les runners Windows (ajouté aux 4 workflows). `libsqlite3-sys` 0.38 utilise `cfg_select` instable → épinglé rusqlite 0.37/libsqlite3-sys 0.35 (MSRV 1.89). `#[tokio::test]` mono-thread + appels ureq bloquants → deadlock des tests d'API (passés en `multi_thread`).
+- **Déviations consignées** : D-9.1 amendée (clé fichier par défaut sur Linux headless, faute de keystore de bureau ; couverture « vol du PC » dégradée → signalée au boot, jamais en silence — ADR-0005 §9).
+- **Dette** (PLAN §0.3) : mode foyer **TLS (rcgen CA locale) + mDNS** différé → issue `debt` #10 ; **cibles cargo-fuzz (IPC/WS) + soak nightly 30 min** différés → issue `debt` #11. Hors « Done quand » de Phase 2 (les 3 critères du gate sont satisfaits sans eux).
+- **Reprise session suivante** : Phase 3 « La boussole » — harnais d'éval + corpus v0 + baselines ; commencer par 3.1 (formats pydantic dialogue/résultat) puis 3.2 (modèle d'utilisateur simulé). `cargo xtask run-eval --suite pr` lève encore son stub `exit 2`.
 
 **Session 2 — 2026-06-13 — Phase 1 complète.**
 - **Fait** (PR #4 mergée + PR #5) : `fluence-protocol` définit 100 % des messages/endpoints §4.A/§5.A/§5.B/§2.A (1.1, 1.2) — invariants dans les types (T2 : `Normalized` rejette `1.2` et NaN à la désérialisation ; scopes/speakers **fail closed**, enums de présentation tolérantes `#[serde(other)]`), RFC 9457 + catalogue de codes en URN, registre de routes déclaratif testé. Chaîne 1.3 : 28 goldens + `openapi.json` (spectral : 0 finding, 2 overrides justifiés) + `api.d.ts` généré (préfixé SPDX par le générateur) ; **dérive prouvée par mutation** (caret u32→u64 → 3 artefacts signalés, exit 1) ; job CI `contracts (T3)` requis au merge. Stabilité 1.3bis : `x-fluence-stability` par opération (memory/asr/profiles experimental). SDK v0 (1.4) : fetch+SSE+WS zéro métier, 17 tests (SSE fragmenté, problem+json, dispatch WS tolérant, expectTypeOf). Doc publiée : GitHub Pages (Redoc + rustdoc, workflow `docs.yml`) ; gate couverture protocol ≥ 85 % en CI. ADR-0004 (décisions de contrat v1, amendé : token WS en query param — l'API WebSocket navigateur ne pose pas de headers). CHANGELOG créé (consolidation §0.3).
