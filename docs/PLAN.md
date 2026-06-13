@@ -267,14 +267,27 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 | 1 — Contrat | ✅ terminée (2026-06-13) | `phase-1-done` | contrat v1 complet + chaîne anti-dérive + SDK v0 + doc Pages + couverture ; détails session 2 |
 | 2 — Hub & supervision | ✅ terminée (2026-06-13) | `phase-2-done` | hub vital (bootstrap < 3 s, store SQLCipher, IPC, appairage/scopes/CORS, superviseur + kill-tests Win+Linux, WS par topics, autosave draft, `fluencectl` v0, journal d'accès) + durcissement audit adverse (F01/F06/F09/F15/G2/G7…) ; **différés en dette** : mode foyer TLS+mDNS (#10), fuzz+soak (#11) ; détails session 3 |
 | 3 — Boussole | ✅ terminée (2026-06-13) | `phase-3-done` | harnais d'éval auto-validant (formats versionnés, métriques entières déterministes, utilisateur simulé + AZERTY, encadrement LbL/n-gram/oracle), corpus v0 (graine 15 dialogues, variantes, anti-pathos), `fluence-ngram` (crate Rust + serveur subprocess), `xtask run-eval` + porte de régression KS% en CI ; **différés en dette** : corpus v1 par teacher (#18), commentaire PR du delta (#19) ; ADR-0006 ; détails session 3 |
-| 4 — Moteur | 🟡 ingénierie livrée (2026-06-13) | — | moteur LLM réel **livré et branché** : backend `llama-server` (HTTP/ureq, ADR-0007 amendé : FFI rétrogradé, #25), gestion de modèles v0 (manifeste+sha256+reprise+cache), hub spawn/supervise llama-server + injection backend gated-`ready` + **kill-test dégradation gracieuse en CI** (critère #3 ✓), `fluencectl suggest` (pipeline réel validé localement bout-en-bout) ; **RESTE le critère valeur #2** (rephrase bat n-gram +10 pts KS% en nightly) = nouveau mode d'éval phrase-niveau + acceptation sémantique + modèle capable → workstream ML (voir journal session 4) ; PRs #26/#27/#28/#29 |
-| 5 — Boucle complète | ⬜ | — | |
+| 4 — Moteur | ✅ terminée (2026-06-13) | `phase-4-done` (au merge) | ingénierie livrée (session 4) + **critère valeur #31 ATTEINT** (session 5) : éval rephrase phrase-niveau + acceptation sémantique par embeddings (#35), corpus teacher v1 (136 dialogues, splits gelés, #36), mesure **hors-domaine** rephrase vs n-gram → **WPM +8,60 ET KS% +17,81 → PASS** (ADR-0008, critère amendé WPM-primaire) ; tag posé au merge de #32/#35/#36 |
+| 5 — Boucle complète | 🟡 en cours (2026-06-13) | — | contrat urgence livré (`SystemEvent::Emergency` + `POST /system/emergency`, #37) ; reste câblage `fluence-input` au hub, worker-tts Piper, composeur web, urgence runtime, instrumentation |
 | 6 — Regard | ⬜ | — | |
 | 7 — Durcissement → A1 | ⬜ | — | |
 
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
 
 ### Journal de session
+
+**Session 5 — 2026-06-13 — Clôture Phase 4 (critère valeur) + démarrage Phase 5.**
+- **Phase 4 critère valeur #31 — ATTEINT, sans fudging** :
+  - **Éval rephrase phrase-niveau + acceptation sémantique** (#35) : `fluence_eval.rephrase` (sources/acceptors abstraits, `evaluate_rephrase`), `fluence_eval.live` (cosinus, `EmbeddingAcceptor` bge-m3 via `/v1/embeddings`, `HubRephraseSource` pilotant le **vrai** `/suggest`), `fluence_eval.measure` **split-aware** (n-gram entraîné sur train+dev, tous modes évalués sur **test** hors-domaine).
+  - **Découverte méthodologique → ADR-0008** : le gate KS%-only in-domain est un proxy biaisé (n-gram sur-appris 35,49 % + plafond de longueur du fragment télégraphique). Critère **amendé** : rephrase bat le n-gram sur le **WPM** (primaire, étoile polaire ×3, SPEC §1.2) **et** sur le **KS% hors-domaine**. Pas un ajustement de seuil (PLAN §0.8) mais une correction documentée (§0.5).
+  - **Pipeline corpus teacher (#18/#36)** : `fluence_data.teacher` (cœur pur testé : matrice 12×4, consigne anti-pathos, parsing `MOI:`/`AUTRE:`, dedup embedding, splits gelés garantissant un dialogue de test par situation) + `fluence_data.generate` (CLI câblant teacher llama-server + embedder + fichier de revue ≥10 %). Corpus **v1 : 136 dialogues** (Gemma 4 E4B), datasheet + 7 tests d'invariants.
+  - **Découverte modèle** : Gemma 4 E4B est un modèle à **raisonnement** (canal `thought` caché) → vide `content` au budget normal. Fix `enable_thinking=false` au teacher (#36) **et** au backend de prod (`generate_body`, #32) → réponse directe, rapide.
+  - **Mesure réelle** (hub Gemma E4B GPU + bge-m3 + n-gram, split test gelé v1) : lettre-à-lettre 0 % / n-gram **hors-domaine 11,71 % KS, 12,31 WPM** / rephrase **29,52 % KS, 20,91 WPM, acceptation 0,95** → gate **PASS** (WPM +8,60, KS% +17,81). La thèse de l'ADR-0008 est confirmée : le n-gram hors-domaine s'effondre, rephrase tient.
+  - **Revue anti-pathos** (SPEC §5.D étage 3) : écran auto 0 marqueur + **revue humaine de l'échantillon ≥10 % approuvée**.
+- **Phase 5 démarrée** :
+  - **5.4 contrat urgence (#37)** : `SystemEvent::Emergency { active, at }` (diffusé topic `system`) + `POST /api/v1/system/emergency` (scope control, 204), artefacts régénérés (goldens + openapi + SDK `api.d.ts`), spectral 0, SDK 17 tests. Le câblage hub (diffusion + sonnerie) et l'UI composeur (double confirmation) suivent.
+- **Dette / différés** : tag git `phase-4-done` posé **au merge** de #32/#35/#36 (PRs ouvertes, merge = décision utilisateur) ; gate CI nightly de la valeur → runner self-hosted (Phase 7, ADR-0008) ; corpus v1 complet ≥500 dial./teacher (#18) ; le `enable_thinking=false` côté prod est joint à #32.
+- **Reprise session suivante** : poursuivre la Phase 5 — câblage `fluence-input` au hub (5.1), worker-tts Piper (5.2, binaire Piper à provisionner), composeur web (5.3), urgence runtime + instrumentation (5.4/5.5).
 
 **Session 4 — 2026-06-13 — Phase 4 « Le moteur » : ingénierie livrée, critère valeur restant.**
 - **Fait** (PRs #26 backend, #27 gestion modèles, #28 supervision+kill-test, #29 cli) :

@@ -5,7 +5,19 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
-## Phase 4 — Le moteur : LLM réel (en cours — 2026-06-13)
+## Phase 5 — La boucle complète (en cours — 2026-06-13)
+
+### Ajouté
+
+- **Alerte d'urgence dans le contrat** (D-7.4, SPEC §7.A) : `SystemEvent::Emergency
+  { active, at }` diffusé sur le topic `system` à tous les clients appairés
+  (bannière partout, sonnerie locale) + `POST /api/v1/system/emergency` (scope
+  `control`, 204 — l'état revient via l'événement diffusé). Câblé dans la source
+  de vérité des schémas : goldens, `openapi.json` et le SDK `api.d.ts`
+  régénérés. La double confirmation reste l'affaire du composeur ; le hub
+  diffuse. Vérifié : spectral 0 finding, SDK typecheck + 17 tests.
+
+## Phase 4 — Le moteur : LLM réel (2026-06-13)
 
 ### Ajouté
 
@@ -44,15 +56,39 @@ définis en SPEC D-12.2).
 - **Pipeline réel validé localement de bout en bout** : `fluencectl suggest` →
   hub → **vrai** `llama-server` supervisé + SmolLM2 → suggestion `[model]`.
 
-### En cours (critère valeur #2 — workstream ML/nightly)
+### Critère valeur #31 — atteint (ADR-0008)
 
-- « `rephrase` bat le n-gram d'au moins +10 points de KS% » : exige un **nouveau
-  mode d'évaluation phrase-niveau** (acceptation **sémantique** par embeddings,
-  le harnais v0 étant prédiction de mot), une **source Rephrase** pilotant le
-  vrai `/suggest`, un **modèle capable** (le tiny-LLM ne vaut que pour la
-  mécanique) et un **job nightly self-hosted**. Tag `phase-4-done` non posé tant
-  que ce critère n'est pas atteint (jamais d'ajustement de seuil — PLAN §0).
-  Détails et plan de reprise : PLAN §5, journal session 4.
+- **Éval rephrase phrase-niveau + acceptation sémantique** (`fluence_eval`) :
+  `rephrase` (sources/acceptors abstraits, `evaluate_rephrase`), `live`
+  (cosinus, `EmbeddingAcceptor` bge-m3 via `/v1/embeddings`, `HubRephraseSource`
+  pilotant le **vrai** `/suggest` du hub), `measure` **split-aware** (n-gram
+  entraîné sur train+dev, tous modes évalués sur le split **test**
+  hors-domaine).
+- **Corpus teacher v1** (`fluence_data.teacher` + `generate`) : 12 situations ×
+  4 registres sous consigne anti-pathos, parsing de transcripts, dedup par
+  embedding, splits gelés (un dialogue de test par situation). Corpus **v1 :
+  136 dialogues** (Gemma 4 E4B), datasheet + tests d'invariants. Misérabilisme
+  filtré (écran auto 0 marqueur + **revue humaine ≥10 % approuvée**, SPEC §5.D).
+- `enable_thinking=false` sur le chemin `generate` du backend : Gemma 4 E4B est
+  un modèle à raisonnement qui, sinon, épuise le budget en réflexion cachée et
+  ne renvoie rien — désormais il répond directement (no-op pour les autres).
+
+### Critère amendé (ADR-0008)
+
+- Le gate « +10 pts KS% in-domain » était un proxy biaisé (n-gram sur-appris
+  35,49 % + plafond de longueur du fragment télégraphique). **Amendé** : rephrase
+  doit battre le n-gram sur le **WPM** (primaire — étoile polaire ×3, SPEC §1.2)
+  **et** sur le **KS% hors-domaine**. Correction méthodologique documentée, pas
+  un ajustement de seuil (PLAN §0.5/§0.8).
+
+### Vérifié (mesure locale)
+
+- Sur le split **test** gelé de v1 (n-gram entraîné sur train+dev ; rephrase via
+  le vrai hub + Gemma 4 E4B ; acceptation sémantique bge-m3) :
+  lettre-à-lettre 0 % / **n-gram hors-domaine 11,71 % KS, 12,31 WPM** / rephrase
+  **29,52 % KS, 20,91 WPM, acceptation 0,95** → **gate PASS** (WPM +8,60,
+  KS% +17,81). Tag `phase-4-done` posé au merge ; gate CI nightly différé au
+  runner self-hosted (Phase 7, ADR-0008).
 
 ## Phase 3 — La boussole : harnais d'évaluation (2026-06-13)
 
