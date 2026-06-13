@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "suite": "pr",
+  "seed": 20260613,
+  "source": "ngram",
+  "mode": "ngram",
+  "per_dialogue": [
+    {
+      "dialogue_id": "v0-soins-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 42,
+        "keystrokes": 33,
+        "baseline_keystrokes": 42,
+        "elapsed_ms": 39550,
+        "suggestions_offered": 48,
+        "suggestions_consulted": 17,
+        "suggestions_accepted": 8,
+        "ks_pct": 21.428571428571427,
+        "wpm": 12.743362831858407,
+        "acceptance_rate": 0.47058823529411764,
+        "harmful_rate": 0.5294117647058824
+      }
+    },
+    {
+      "dialogue_id": "v0-repas-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 68,
+        "keystrokes": 51,
+        "baseline_keystrokes": 68,
+        "elapsed_ms": 58350,
+        "suggestions_offered": 61,
+        "suggestions_consulted": 24,
+        "suggestions_accepted": 9,
+        "ks_pct": 25.0,
+        "wpm": 13.984575835475578,
+        "acceptance_rate": 0.375,
+        "harmful_rate": 0.625
+      }
+    },
+    {
+      "dialogue_id": "v0-repas-02",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 41,
+        "keystrokes": 26,
+        "baseline_keystrokes": 41,
+        "elapsed_ms": 30750,
+        "suggestions_offered": 36,
+        "suggestions_consulted": 13,
+        "suggestions_accepted": 7,
+        "ks_pct": 36.58536585365854,
+        "wpm": 16.0,
+        "acceptance_rate": 0.5384615384615384,
+        "harmful_rate": 0.46153846153846156
+      }
+    },
+    {
+      "dialogue_id": "v0-famille-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 32,
+        "keystrokes": 17,
+        "baseline_keystrokes": 32,
+        "elapsed_ms": 20350,
+        "suggestions_offered": 24,
+        "suggestions_consulted": 9,
+        "suggestions_accepted": 5,
+        "ks_pct": 46.875,
+        "wpm": 18.86977886977887,
+        "acceptance_rate": 0.5555555555555556,
+        "harmful_rate": 0.4444444444444444
+      }
+    },
+    {
+      "dialogue_id": "v0-famille-02",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 47,
+        "keystrokes": 31,
+        "baseline_keystrokes": 47,
+        "elapsed_ms": 36650,
+        "suggestions_offered": 44,
+        "suggestions_consulted": 15,
+        "suggestions_accepted": 7,
+        "ks_pct": 34.04255319148936,
+        "wpm": 15.38881309686221,
+        "acceptance_rate": 0.4666666666666667,
+        "harmful_rate": 0.5333333333333333
+      }
+    },
+    {
+      "dialogue_id": "v0-medical-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 78,
+        "keystrokes": 37,
+        "baseline_keystrokes": 78,
+        "elapsed_ms": 44050,
+        "suggestions_offered": 52,
+        "suggestions_consulted": 19,
+        "suggestions_accepted": 10,
+        "ks_pct": 52.56410256410257,
+        "wpm": 21.248581157775256,
+        "acceptance_rate": 0.5263157894736842,
+        "harmful_rate": 0.47368421052631576
+      }
+    },
+    {
+      "dialogue_id": "v0-urgence-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 53,
+        "keystrokes": 27,
+        "baseline_keystrokes": 53,
+        "elapsed_ms": 32200,
+        "suggestions_offered": 38,
+        "suggestions_consulted": 14,
+        "suggestions_accepted": 7,
+        "ks_pct": 49.056603773584904,
+        "wpm": 19.751552795031056,
+        "acceptance_rate": 0.5,
+        "harmful_rate": 0.5
+      }
+    },
+    {
+      "dialogue_id": "v0-loisirs-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 33,
+        "keystrokes": 27,
+        "baseline_keystrokes": 33,
+        "elapsed_ms": 30800,
+        "suggestions_offered": 31,
+        "suggestions_consulted": 13,
+        "suggestions_accepted": 6,
+        "ks_pct": 18.181818181818183,
+        "wpm": 12.857142857142858,
+        "acceptance_rate": 0.46153846153846156,
+        "harmful_rate": 0.5384615384615384
+      }
+    },
+    {
+      "dialogue_id": "v0-loisirs-02",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 38,
+        "keystrokes": 24,
+        "baseline_keystrokes": 38,
+        "elapsed_ms": 28050,
+        "suggestions_offered": 31,
+        "suggestions_consulted": 12,
+        "suggestions_accepted": 5,
+        "ks_pct": 36.84210526315789,
+        "wpm": 16.25668449197861,
+        "acceptance_rate": 0.4166666666666667,
+        "harmful_rate": 0.5833333333333334
+      }
+    },
+    {
+      "dialogue_id": "v0-admin-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 84,
+        "keystrokes": 48,
+        "baseline_keystrokes": 84,
+        "elapsed_ms": 57500,
+        "suggestions_offered": 69,
+        "suggestions_consulted": 25,
+        "suggestions_accepted": 13,
+        "ks_pct": 42.857142857142854,
+        "wpm": 17.530434782608694,
+        "acceptance_rate": 0.52,
+        "harmful_rate": 0.48
+      }
+    },
+    {
+      "dialogue_id": "v0-visite-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 44,
+        "keystrokes": 31,
+        "baseline_keystrokes": 44,
+        "elapsed_ms": 35300,
+        "suggestions_offered": 35,
+        "suggestions_consulted": 15,
+        "suggestions_accepted": 5,
+        "ks_pct": 29.545454545454547,
+        "wpm": 14.957507082152974,
+        "acceptance_rate": 0.3333333333333333,
+        "harmful_rate": 0.6666666666666666
+      }
+    },
+    {
+      "dialogue_id": "v0-telephone-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 42,
+        "keystrokes": 30,
+        "baseline_keystrokes": 42,
+        "elapsed_ms": 34950,
+        "suggestions_offered": 38,
+        "suggestions_consulted": 15,
+        "suggestions_accepted": 7,
+        "ks_pct": 28.57142857142857,
+        "wpm": 14.420600858369099,
+        "acceptance_rate": 0.4666666666666667,
+        "harmful_rate": 0.5333333333333333
+      }
+    },
+    {
+      "dialogue_id": "v0-couple-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 39,
+        "keystrokes": 24,
+        "baseline_keystrokes": 39,
+        "elapsed_ms": 28200,
+        "suggestions_offered": 32,
+        "suggestions_consulted": 12,
+        "suggestions_accepted": 5,
+        "ks_pct": 38.46153846153847,
+        "wpm": 16.595744680851062,
+        "acceptance_rate": 0.4166666666666667,
+        "harmful_rate": 0.5833333333333334
+      }
+    },
+    {
+      "dialogue_id": "v0-aide-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 37,
+        "keystrokes": 25,
+        "baseline_keystrokes": 37,
+        "elapsed_ms": 29000,
+        "suggestions_offered": 32,
+        "suggestions_consulted": 12,
+        "suggestions_accepted": 5,
+        "ks_pct": 32.432432432432435,
+        "wpm": 15.310344827586206,
+        "acceptance_rate": 0.4166666666666667,
+        "harmful_rate": 0.5833333333333334
+      }
+    },
+    {
+      "dialogue_id": "v0-sortie-01",
+      "source": "ngram",
+      "mode": "ngram",
+      "metrics": {
+        "characters": 32,
+        "keystrokes": 27,
+        "baseline_keystrokes": 32,
+        "elapsed_ms": 31100,
+        "suggestions_offered": 33,
+        "suggestions_consulted": 13,
+        "suggestions_accepted": 5,
+        "ks_pct": 15.625,
+        "wpm": 12.347266881028938,
+        "acceptance_rate": 0.38461538461538464,
+        "harmful_rate": 0.6153846153846154
+      }
+    }
+  ],
+  "aggregate": {
+    "characters": 710,
+    "keystrokes": 458,
+    "baseline_keystrokes": 710,
+    "elapsed_ms": 536800,
+    "suggestions_offered": 604,
+    "suggestions_consulted": 228,
+    "suggestions_accepted": 104,
+    "ks_pct": 35.49295774647888,
+    "wpm": 15.87183308494784,
+    "acceptance_rate": 0.45614035087719296,
+    "harmful_rate": 0.543859649122807
+  }
+}

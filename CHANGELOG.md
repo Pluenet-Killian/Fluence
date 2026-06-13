@@ -5,6 +5,38 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
+## Phase 3 — La boussole : harnais d'évaluation (2026-06-13)
+
+### Ajouté
+
+- `fluence_data` (Python) : format de corpus versionné (pydantic) — dialogues,
+  tours, variantes d'entrée sur la matrice 12 situations × 4 registres, splits
+  gelés, I/O JSONL ; matrice de **confusion spatiale AZERTY** ; générateurs de
+  variantes (télégraphique, bruitée, abrégée) ; grille **anti-pathos** (juge
+  auto) ; **corpus v0** (graine de 15 dialogues écrite à la main, anti-pathos,
+  golden `corpus/v0.jsonl`).
+- `fluence_eval` (Python) : **métriques** KS%, WPM simulé, taux d'acceptation et
+  de suggestions nuisibles — comptabilité en entiers, déterministe au bit près
+  (Win/Linux) ; **utilisateur simulé** (dwell + fatigue, coût de scan facturé
+  350 + 150 ms, acceptation lexicale v0) ; **sources** lettre-à-lettre, oracle,
+  n-gram ; runner → `EvalReport` versionné ; CLI `run`/`check` et
+  `python -m fluence_eval`.
+- `fluence-ngram` (Rust) : modèle fréquentiel FR compact — `complete` (mots) et
+  `next_char_dist` (distribution caractère), entraînable, sérialisable JSON —
+  le **fallback D-2.6** réutilisable par le hub ; binaire `serve` (protocole
+  JSON-lines) que l'éval pilote pour mesurer le vrai modèle (ADR-0006 amendé).
+- `cargo xtask run-eval [--suite]` opérationnel (n'« exit 2 » plus) ; **porte de
+  CI** : régression KS% > 2 points = échec (test de baseline gelée) ; delta KS%
+  par mode publié au résumé de job CI.
+- ADR-0006 (architecture du harnais ; staging v0→v1 vs §8.A).
+
+### Vérifié (l'encadrement auto-valide le harnais — SPEC §8.A)
+
+- lettre-à-lettre = 0 % KS (plancher) < n-gram réel = 35,5 % KS < oracle =
+  66,8 % KS (plafond), sur le corpus v0 ; déterminisme seedé ; propriétés de la
+  matrice de confusion (Σ ≈ 1, voisin proche > lointain). Différés en dette :
+  corpus v1 par teacher LLM (#18), commentaire PR du delta (#19).
+
 ## Phase 2 — Hub & supervision : « le clavier parle toujours » (2026-06-13)
 
 ### Ajouté
