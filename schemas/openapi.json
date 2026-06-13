@@ -3373,6 +3373,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Device token — browser WebSocket cannot set the X-Fluence-Token header (ADR-0004)",
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

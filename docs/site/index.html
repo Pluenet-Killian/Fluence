@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 (page statique du site de doc) -->
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fluence — documentation API</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+      }
+      header {
+        background: #1a1f2e;
+        color: #f5f7fa;
+        padding: 1.2rem 2rem;
+        display: flex;
+        align-items: baseline;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 1.3rem;
+      }
+      header nav a {
+        color: #9ecbff;
+        margin-right: 1rem;
+        text-decoration: none;
+      }
+      header nav a:hover {
+        text-decoration: underline;
+      }
+      header p {
+        margin: 0;
+        opacity: 0.75;
+        font-size: 0.9rem;
+      }
+      #redoc-container {
+        height: calc(100vh - 64px);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fluence — API du hub</h1>
+      <nav>
+        <a href="rustdoc/fluence_protocol/index.html">rustdoc (fluence-protocol)</a>
+        <a href="openapi.json">openapi.json</a>
+        <a href="https://github.com/Pluenet-Killian/Fluence">GitHub</a>
+      </nav>
+      <p>Générée depuis <code>fluence-protocol</code> — la dérive est une erreur de CI.</p>
+    </header>
+    <div id="redoc-container"></div>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+    <script>
+      Redoc.init("openapi.json", {}, document.getElementById("redoc-container"));
+    </script>
+  </body>
+</html>

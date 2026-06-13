@@ -112,6 +112,21 @@ jobs:
       - name: OpenAPI lint (spectral)
         run: pnpm exec spectral lint schemas/openapi.json --ruleset .spectral.yaml --fail-severity warn
 
+  coverage:
+    name: coverage gates (PLAN §1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      # Gates par crate (PLAN §1) : ajoutées au fur et à mesure que les
+      # crates gagnent du vrai code. Phase 1 : fluence-protocol ≥ 85 %.
+      - name: fluence-protocol ≥ 85% lines
+        run: cargo llvm-cov --package fluence-protocol --fail-under-lines 85
+
   cargo-deny:
     name: dependency licenses & advisories
     runs-on: ubuntu-latest

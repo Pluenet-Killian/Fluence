@@ -382,6 +382,12 @@ pub fn routes() -> &'static [RouteSpec] {
                     required: true,
                     description: "Input protocol version (currently 1)",
                 },
+                QueryParam {
+                    name: "token",
+                    required: true,
+                    description: "Device token — browser WebSocket cannot set the \
+                                  X-Fluence-Token header (ADR-0004)",
+                },
             ],
         },
     ]

@@ -2019,6 +2019,8 @@ export interface operations {
                 topics: string;
                 /** @description Input protocol version (currently 1) */
                 v: string;
+                /** @description Device token — browser WebSocket cannot set the X-Fluence-Token header (ADR-0004) */
+                token: string;
             };
             header?: never;
             path?: never;
