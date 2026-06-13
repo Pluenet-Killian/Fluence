@@ -19,9 +19,10 @@ line-length = 100
 src = ["data/src", "training/src", "eval/src"]
 
 [tool.ruff.lint]
-# « × » est la typographie des matrices de la SPEC (12 situations × 4 registres) ;
-# légitime en docstring, jamais dans un identifiant.
-allowed-confusables = ["×"]
+# Typographie mathématique de la SPEC, légitime en docstring/commentaire,
+# jamais dans un identifiant : « × » (12 situations × 4 registres),
+# « − » (le vrai signe moins, p.ex. la porte « KS% −2 points » de §8.A).
+allowed-confusables = ["×", "−"]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -42,7 +43,15 @@ convention = "google"
 
 [tool.mypy]
 strict = true
+# Teaches mypy about pydantic v2 (validators, computed_field over @property…).
+plugins = ["pydantic.mypy"]
 files = ["data", "training", "eval"]
 
 [tool.pytest.ini_options]
 testpaths = ["data/tests", "training/tests", "eval/tests"]
+# « register » (registre, §5.D — et le champ du contrat) éclipse la méthode de
+# métaclasse ABCMeta.register, jamais appelée sur un modèle de données. Le
+# champ est intentionnel ; on filtre le warning bénin pour garder une sortie nette.
+filterwarnings = [
+    'ignore:Field name "register".*:UserWarning',
+]
