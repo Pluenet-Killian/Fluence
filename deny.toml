@@ -26,6 +26,15 @@ confidence-threshold = 0.93
 # Quand les crates AGPL d'apps/ naîtront (fluencectl en Phase 2), elles
 # passeront par des [[licenses.exceptions]] ciblées par nom de crate.
 
+# Exceptions ciblées : une licence autorisée crate par crate, jamais globalement.
+[[licenses.exceptions]]
+# option-ext (dépendance transitive de `directories`, via `dirs-sys`) est sous
+# MPL-2.0 — copyleft *au niveau fichier* : consommer la crate sans la modifier
+# n'impose rien à notre code. Sûr comme dépendance ; vetté ici explicitement
+# plutôt que d'ouvrir MPL-2.0 pour tout le graphe.
+name = "option-ext"
+allow = ["MPL-2.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
