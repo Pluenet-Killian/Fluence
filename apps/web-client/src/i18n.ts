@@ -28,6 +28,8 @@ export const FR = {
   "status.connected": "Connecté",
   "status.reconnecting": "Reconnexion…",
   "status.degraded": "Mode dégradé",
+  "metrics.wpm": "Mots/min",
+  "metrics.ks": "Éco. frappe",
 } as const;
 
 /** A valid translation key. */

@@ -19,6 +19,7 @@ import { h } from "./dom.js";
 import { normalizePoint } from "./coords.js";
 import { t } from "./i18n.js";
 import { allKeys, BACKSPACE, buildTargetMap, KEY_ROWS, type MeasuredKey } from "./keyboard.js";
+import { UsageMeter } from "./metrics.js";
 
 const SURFACE = "main";
 const SUGGESTION_SLOTS = 3;
@@ -36,6 +37,7 @@ export class Composer {
   readonly #client: FluenceClient;
   readonly #root: HTMLElement;
   readonly #gate = new SuggestionGate();
+  readonly #meter = new UsageMeter();
   readonly #keyEls = new Map<string, HTMLButtonElement>();
 
   #sessionId = "";
@@ -54,6 +56,7 @@ export class Composer {
 
   // DOM refs, assigned in render().
   #draftEl!: HTMLElement;
+  #metricsEl!: HTMLElement;
   #statusEl!: HTMLElement;
   #bannerEl!: HTMLElement;
   #emergencyBtn!: HTMLButtonElement;
@@ -94,6 +97,8 @@ export class Composer {
   #render(): void {
     this.#bannerEl = h("div", { class: "banner", role: "status", hidden: "" });
     this.#statusEl = h("div", { class: "status" }, [t("status.connected")]);
+    this.#metricsEl = h("div", { class: "metrics", "aria-live": "polite" });
+    this.#updateMetrics();
     this.#draftEl = h("output", { class: "draft", "aria-live": "polite" });
     this.#renderDraft();
 
@@ -140,6 +145,7 @@ export class Composer {
       suggestions,
       keyboard,
       actions,
+      this.#metricsEl,
     );
   }
 
@@ -179,7 +185,9 @@ export class Composer {
     } else {
       this.#draft += output;
     }
+    this.#meter.recordSelection(performance.now());
     this.#renderDraft();
+    this.#updateMetrics();
     this.#scheduleAutosave();
     this.#scheduleSuggest();
   }
@@ -197,9 +205,16 @@ export class Composer {
       return;
     }
     this.#draft = text;
+    this.#meter.recordSelection(performance.now());
     this.#renderDraft();
+    this.#updateMetrics();
     this.#clearSuggestions();
     this.#scheduleAutosave();
+  }
+
+  #updateMetrics(): void {
+    const { wpm, ksPercent } = this.#meter.snapshot(this.#draft.length, performance.now());
+    this.#metricsEl.textContent = `${t("metrics.wpm")} ${wpm.toFixed(0)} · ${t("metrics.ks")} ${ksPercent.toFixed(0)} %`;
   }
 
   // ---- Targets ----

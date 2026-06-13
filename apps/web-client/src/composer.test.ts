@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { SuggestionGate } from "./antiflicker.js";
 import { normalizePoint } from "./coords.js";
 import { allKeys, BACKSPACE, buildTargetMap, KEY_ROWS, type MeasuredKey } from "./keyboard.js";
+import { UsageMeter } from "./metrics.js";
 
 describe("normalizePoint", () => {
   const rect = { left: 100, top: 50, width: 200, height: 100 };
@@ -64,5 +65,26 @@ describe("keyboard layout", () => {
     expect(map.viewport).toEqual({ w: 800, h: 600 });
     expect(map.targets[0]?.id).toBe("key_e");
     expect(map.targets[0]?.rect).toEqual([0, 0, 50, 50]);
+  });
+});
+
+describe("UsageMeter (instrumentation, PLAN 5.5)", () => {
+  it("computes effective WPM from produced text over time", () => {
+    const meter = new UsageMeter();
+    meter.recordSelection(0);
+    // 50 produced chars = 10 words, over one minute → 10 WPM.
+    expect(meter.snapshot(50, 60_000).wpm).toBeCloseTo(10);
+  });
+
+  it("rewards suggestions over char-by-char typing in keystroke savings", () => {
+    const accepted = new UsageMeter();
+    accepted.recordSelection(0); // one selection drops a 20-char suggestion
+    expect(accepted.snapshot(20, 1000).ksPercent).toBeCloseTo(95);
+
+    const typed = new UsageMeter();
+    Array.from({ length: 20 }).forEach((_, index) => {
+      typed.recordSelection(index);
+    });
+    expect(typed.snapshot(20, 1000).ksPercent).toBeCloseTo(0);
   });
 });
