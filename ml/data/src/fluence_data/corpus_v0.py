@@ -21,15 +21,13 @@ from dataclasses import dataclass
 
 from fluence_data.formats import (
     Dialogue,
-    InputVariant,
     Register,
     Situation,
     Speaker,
     Split,
     Turn,
-    VariantKind,
 )
-from fluence_data.variants import abbreviated, noised, telegraphic
+from fluence_data.variants import build_variants
 
 #: Seed for the noised-variant RNG. Fixed so the corpus artifact is stable.
 _NOISE_SEED = 20260613
@@ -175,22 +173,6 @@ _SEEDS: tuple[_Seed, ...] = (
 )
 
 
-def _variants_for(text: str, rng: random.Random) -> list[InputVariant]:
-    """Generate the input variants of a user turn, keeping only useful ones.
-
-    A variant equal to the source (it added nothing) or empty (e.g. a
-    telegraphic turn of only function words) is dropped.
-    """
-    candidates = (
-        (VariantKind.TELEGRAPHIC, telegraphic(text)),
-        (VariantKind.NOISED, noised(text, rng)),
-        (VariantKind.ABBREVIATED, abbreviated(text)),
-    )
-    return [
-        InputVariant(kind=kind, text=value) for kind, value in candidates if value and value != text
-    ]
-
-
 def build_corpus_v0() -> list[Dialogue]:
     """Build the seed corpus with variants attached (deterministic).
 
@@ -205,7 +187,7 @@ def build_corpus_v0() -> list[Dialogue]:
             Turn(
                 speaker=speaker,
                 text=text,
-                variants=_variants_for(text, rng) if speaker is Speaker.USER else [],
+                variants=build_variants(text, rng) if speaker is Speaker.USER else [],
             )
             for speaker, text in seed.turns
         ]
