@@ -28,17 +28,49 @@ from fluence_eval.result import (
     EvalReport,
     MetricBundle,
 )
+from fluence_eval.runner import (
+    Mode,
+    letter_by_letter_mode,
+    oracle_mode,
+    run_corpus,
+)
+from fluence_eval.sources import (
+    LetterByLetter,
+    Oracle,
+    Prediction,
+    PredictionSource,
+)
+from fluence_eval.user import (
+    LETTER_BY_LETTER,
+    PREDICTION,
+    MotorProfile,
+    SimulatedUser,
+    SuggestionPolicy,
+)
 
 __all__ = [
     "CHARS_PER_WORD",
+    "LETTER_BY_LETTER",
+    "PREDICTION",
     "RESULT_SCHEMA_VERSION",
     "Counters",
     "DialogueResult",
     "EvalReport",
+    "LetterByLetter",
     "MetricBundle",
+    "Mode",
+    "MotorProfile",
+    "Oracle",
+    "Prediction",
+    "PredictionSource",
+    "SimulatedUser",
+    "SuggestionPolicy",
     "acceptance_rate",
     "aggregate_counters",
     "harmful_rate",
     "keystroke_savings_pct",
+    "letter_by_letter_mode",
+    "oracle_mode",
+    "run_corpus",
     "simulated_wpm",
 ]
