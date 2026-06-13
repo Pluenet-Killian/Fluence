@@ -1,0 +1,51 @@
+# Publication de la doc API sur GitHub Pages (critère « Done quand » Phase 1).
+# Contenu : Redoc sur schemas/openapi.json + rustdoc de fluence-protocol.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Build rustdoc (fluence-protocol and deps)
+        run: cargo doc --package fluence-protocol --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp docs/site/index.html site/
+          cp schemas/openapi.json site/
+          cp -r target/doc site/rustdoc
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

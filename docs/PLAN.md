@@ -264,7 +264,7 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 | Phase | État | Tag | Notes |
 |---|---|---|---|
 | 0 — Usine | ✅ terminée (2026-06-13) | `phase-0-done` | 4 workflows verts Win+Linux ; vérifications « l'usine se teste » passées ; détails session 1 |
-| 1 — Contrat | ⬜ à lancer | — | prochaine phase |
+| 1 — Contrat | ✅ terminée (2026-06-13) | `phase-1-done` | contrat v1 complet + chaîne anti-dérive + SDK v0 + doc Pages + couverture ; détails session 2 |
 | 2 — Hub & supervision | ⬜ | — | |
 | 3 — Boussole | ⬜ | — | |
 | 4 — Moteur | ⬜ | — | |
@@ -275,6 +275,13 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
 
 ### Journal de session
+
+**Session 2 — 2026-06-13 — Phase 1 complète.**
+- **Fait** (PR #4 mergée + PR #5) : `fluence-protocol` définit 100 % des messages/endpoints §4.A/§5.A/§5.B/§2.A (1.1, 1.2) — invariants dans les types (T2 : `Normalized` rejette `1.2` et NaN à la désérialisation ; scopes/speakers **fail closed**, enums de présentation tolérantes `#[serde(other)]`), RFC 9457 + catalogue de codes en URN, registre de routes déclaratif testé. Chaîne 1.3 : 28 goldens + `openapi.json` (spectral : 0 finding, 2 overrides justifiés) + `api.d.ts` généré (préfixé SPDX par le générateur) ; **dérive prouvée par mutation** (caret u32→u64 → 3 artefacts signalés, exit 1) ; job CI `contracts (T3)` requis au merge. Stabilité 1.3bis : `x-fluence-stability` par opération (memory/asr/profiles experimental). SDK v0 (1.4) : fetch+SSE+WS zéro métier, 17 tests (SSE fragmenté, problem+json, dispatch WS tolérant, expectTypeOf). Doc publiée : GitHub Pages (Redoc + rustdoc, workflow `docs.yml`) ; gate couverture protocol ≥ 85 % en CI. ADR-0004 (décisions de contrat v1, amendé : token WS en query param — l'API WebSocket navigateur ne pose pas de headers). CHANGELOG créé (consolidation §0.3).
+- **Découvertes notables** : `serde_json` perd 1 ULP sur les f64 sans la feature `float_roundtrip` (attrapé par proptest ; feature activée — le replay T4 et le déterminisme d'éval en dépendent). spectral-cli avait besoin d'un `pnpm install` complet (état de store incomplet lors d'un add concurrent).
+- **Déviations consignées** : détails wire non spécifiés par la SPEC ajoutés et documentés (ADR-0004 §9 : patch de cibles, scope dans PairResponse, `POST /asr/consent`, oubli en deux temps, token WS en query) — pas d'amendement SPEC nécessaire (l'esprit est respecté, le niveau de détail relevait du contrat).
+- **Dette** : aucune nouvelle issue ; les messages WS `asr`/`suggest`/`voice` restent à spécifier en P2 (consigné ADR-0004, attendu).
+- **Reprise session suivante** : Phase 2 « Hub & supervision » — commencer par 2.1 (bootstrap `fluence-hub` : config TOML, port 7411 + repli, tracing avec redaction P0, arrêt propre), puis 2.2 (couche IPC + worker-echo). Le registre de routes de `fluence-protocol` est prêt à être consommé par le routeur axum.
 
 **Session 1 — 2026-06-13 — Phase 0 complète.**
 - **Fait** : repo initialisé et poussé (`Pluenet-Killian/Fluence`, squash-only) ; arborescence §2.B ; SPEC/PLAN/Project versés dans `docs/` ; gouvernance (CONTRIBUTING, SECURITY D-9.3, CODE_OF_CONDUCT) ; templates PR/issues (dont `debt`) ; licences D-10.1 (textes canoniques, copies par sous-arbre, en-têtes SPDX vérifiés par `cargo xtask check-licenses` — testé sur le repo par un test d'intégration) ; `deny.toml` ; 3 workspaces (Cargo resolver 3 / edition 2024 / MSRV 1.89 / clippy pedantic / forbid unsafe ; pnpm TS 6 strict + eslint 10 flat strictTypeChecked + vitest 4 + prettier ; uv ml/ à racine virtuelle + ruff + mypy strict) ; 7 crates + xtask + 3 packages TS + 3 packages Python avec un test réel chacun (invariant de licence D-10.1) ; hooks lefthook < 5 s (mesurés 0,8–2,7 s) + commitlint ; 4 workflows CI ; ADR-0001/0002/0003.
