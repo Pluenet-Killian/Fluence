@@ -563,7 +563,9 @@ name = "fluence-inference"
 version = "0.0.0"
 dependencies = [
  "fluence-protocol",
+ "serde_json",
  "thiserror",
+ "ureq",
 ]
 
 [[package]]

@@ -12,15 +12,18 @@
 //! crate itself stays `forbid(unsafe_code)`.
 //!
 //! PLAN Phase 4 (4.1) lands the [`LlmBackend`] abstraction (ADR-0007) and a
-//! deterministic stub; the real llama.cpp `worker-llm` (4.2) and `worker-tts`
-//! (Phase 5) implement and host it next.
+//! deterministic stub; (4.2) adds [`LlamaServerBackend`], the local llama.cpp
+//! backend realised as an HTTP client to a supervised `llama-server`
+//! subprocess. `worker-tts` (Phase 5) implements and hosts the trait next.
 
 mod backend;
+mod llama_server;
 
 pub use backend::{
     BackendError, CancelToken, GenerateOutcome, GenerateRequest, LlmBackend, StubBackend,
     UnavailableBackend,
 };
+pub use llama_server::LlamaServerBackend;
 
 #[cfg(test)]
 mod tests {
