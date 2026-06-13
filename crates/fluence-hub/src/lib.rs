@@ -21,8 +21,12 @@ pub mod state;
 pub mod supervisor;
 pub mod telemetry;
 
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
+use fluence_inference::{LlmBackend, UnavailableBackend};
+use fluence_ngram::NgramModel;
 use fluence_protocol::api::system::WorkerKind;
 use fluence_store::{KeySource, Store, StoreConfig};
 use tokio::net::TcpListener;
@@ -31,7 +35,7 @@ use tokio::sync::watch;
 use crate::config::HubConfig;
 use crate::events::EventBus;
 use crate::state::AppState;
-use crate::supervisor::WorkerSpec;
+use crate::supervisor::{LlamaSpec, SupervisedLlama, WorkerSpec};
 
 /// Hub startup errors.
 #[derive(Debug, thiserror::Error)]
@@ -109,7 +113,16 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
     .await?;
 
     let bus = EventBus::new();
-    let state = AppState::new(config, store, bus);
+
+    // The acceleration engine: a supervised llama-server when configured,
+    // otherwise unavailable so suggestions degrade to the n-gram fallback
+    // (D-2.6). Built before `config` moves into the state.
+    let llama = build_llama_engine(&config)?;
+    let engine: Arc<dyn LlmBackend> = match &llama {
+        Some((engine, _, _)) => engine.clone(),
+        None => Arc::new(UnavailableBackend),
+    };
+    let state = AppState::new_with(config, store, bus, engine, Arc::new(NgramModel::new()));
     state.spawn_draft_flusher();
     state.spawn_draft_purger();
 
@@ -126,6 +139,13 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
             },
             state.bus().clone(),
         );
+        state.register_worker(handle);
+    }
+
+    // Spawn and supervise llama-server (if configured): the task flips the
+    // engine's readiness flag as the process becomes healthy / dies (D-2.6).
+    if let Some((_, spec, ready)) = llama {
+        let handle = supervisor::supervise_llama_server(spec, state.bus().clone(), ready);
         state.register_worker(handle);
     }
 
@@ -261,6 +281,60 @@ async fn ensure_system_token(state: &AppState) -> Result<(), HubError> {
         })
         .await?;
     Ok(())
+}
+
+/// A built llama engine: the readiness-gated backend to inject as the hub's
+/// engine, the spec to spawn `llama-server`, and the shared readiness flag the
+/// supervisor flips (and the backend reads).
+type LlamaEngine = (Arc<dyn LlmBackend>, LlamaSpec, Arc<AtomicBool>);
+
+/// Builds the supervised LLM engine when a `llama-server` binary **and** model
+/// are configured: picks a stable loopback port, then creates the
+/// readiness-gated backend and the spec to spawn. `Ok(None)` when unconfigured —
+/// the engine is then [`UnavailableBackend`] and suggestions degrade to the
+/// n-gram fallback (D-2.6).
+fn build_llama_engine(config: &HubConfig) -> Result<Option<LlamaEngine>, HubError> {
+    let (Some(command), Some(model)) = (
+        config.llama_server_command.clone(),
+        config.llama_model_path.clone(),
+    ) else {
+        return Ok(None);
+    };
+    let port = pick_free_loopback_port()?;
+    let ready = Arc::new(AtomicBool::new(false));
+    let backend: Arc<dyn LlmBackend> = Arc::new(SupervisedLlama::new(
+        &format!("http://127.0.0.1:{port}"),
+        ready.clone(),
+    ));
+    let spec = LlamaSpec {
+        command,
+        model,
+        port,
+        context_size: config.llama_context_size,
+    };
+    Ok(Some((backend, spec, ready)))
+}
+
+/// Reserves a free loopback port by binding `:0`, reading the assigned port,
+/// then releasing it for llama-server to bind. The port is chosen once and
+/// reused across respawns so the backend URL is stable. A narrow TOCTOU window
+/// remains (another process could grab it first); if so llama-server fails to
+/// bind and exits, and the supervisor restarts it — never a silent wrong-port.
+fn pick_free_loopback_port() -> Result<u16, HubError> {
+    let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|source| {
+        HubError::Setup {
+            context: "reserve llama-server port",
+            source,
+        }
+    })?;
+    let port = listener
+        .local_addr()
+        .map_err(|source| HubError::Setup {
+            context: "read llama-server port",
+            source,
+        })?
+        .port();
+    Ok(port)
 }
 
 /// Binds the configured port, falling back to an ephemeral one when taken

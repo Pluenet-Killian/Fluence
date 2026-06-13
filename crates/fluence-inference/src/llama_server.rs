@@ -53,6 +53,8 @@ const NEXT_CHARS_MAX_PROBS: usize = 100;
 pub struct LlamaServerBackend {
     /// Fully-qualified `…/completion` endpoint, computed once.
     completion_url: String,
+    /// Fully-qualified `…/health` endpoint, computed once.
+    health_url: String,
     /// Connection-pooling HTTP agent (keep-alive → warm KV reuse).
     agent: ureq::Agent,
 }
@@ -65,8 +67,20 @@ impl LlamaServerBackend {
         let base = base_url.trim_end_matches('/');
         Self {
             completion_url: format!("{base}/completion"),
+            health_url: format!("{base}/health"),
             agent: ureq::Agent::new_with_defaults(),
         }
+    }
+
+    /// Whether the server answers `GET /health` with a success status.
+    ///
+    /// `llama-server` returns 200 only once the model is loaded and it is
+    /// ready to serve; while loading (or down) the call is a non-2xx or a
+    /// connection error, both of which read as `false`. The hub's supervisor
+    /// polls this to gate readiness before routing traffic to the backend.
+    #[must_use]
+    pub fn is_healthy(&self) -> bool {
+        self.agent.get(&self.health_url).call().is_ok()
     }
 
     /// POSTs `body` to `/completion` and returns the response body reader.
@@ -432,6 +446,17 @@ mod tests {
         for pair in dist.windows(2) {
             assert!(pair[0].p.get() >= pair[1].p.get(), "must be descending");
         }
+    }
+
+    #[test]
+    fn is_healthy_reflects_server_reachability() {
+        let backend =
+            LlamaServerBackend::new(&mock_server("application/json", r#"{"status":"ok"}"#));
+        assert!(backend.is_healthy(), "a 200 from /health means ready");
+        assert!(
+            !LlamaServerBackend::new("http://127.0.0.1:1").is_healthy(),
+            "a refused connection is not healthy"
+        );
     }
 
     #[test]
