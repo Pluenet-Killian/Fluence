@@ -171,17 +171,26 @@ pub fn build_router(state: AppState) -> Router {
     // parameter — ADR-0004 §1).
     let websocket = Router::new().route("/ws", get(ws::upgrade));
 
-    Router::new()
-        .merge(public)
-        .merge(authed)
-        .merge(websocket)
+    let mut router = Router::new().merge(public).merge(authed).merge(websocket);
+
+    // Serve the web composer as a same-origin PWA when configured (PLAN 5.3):
+    // a fallback under `/`, after the API routes, with an SPA fallback to
+    // `index.html` so client-side routes resolve. Same origin ⇒ no CORS.
+    if let Some(web_dir) = state.config().web_dir.clone() {
+        let index = web_dir.join("index.html");
+        let serve = tower_http::services::ServeDir::new(web_dir)
+            .fallback(tower_http::services::ServeFile::new(index));
+        router = router.fallback_service(serve);
+    }
+
+    router
         // Explicit request-body ceiling (G7): do not depend on axum's
         // implicit default. Generous for a JSON draft (text itself is
         // capped far lower in `put_draft`, F09) yet bounds any single
         // request a local device can send.
         .layer(axum::extract::DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
-        // CORS: strict allowlist — empty in Phase 2 (no web client yet),
-        // so any cross-origin browser call is refused (SPEC §2.A).
+        // CORS: strict allowlist — empty (the composer is same-origin), so any
+        // cross-origin browser call is refused (SPEC §2.A).
         .layer(tower_http::cors::CorsLayer::new())
         .with_state(state)
 }

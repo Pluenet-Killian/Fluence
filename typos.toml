@@ -22,6 +22,9 @@ heros = "heros"
 abord = "abord"
 # Bloc de contexte du moteur (§5.C) : « registre » de langue, pas « register ».
 registre = "registre"
+# Chaînes FR de l'interface du composeur web (§7.A).
+appareil = "appareil"
+Espace = "Espace"
 
 [files]
 extend-exclude = [

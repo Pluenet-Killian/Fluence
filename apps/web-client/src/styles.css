@@ -1,0 +1,184 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* High-contrast theme (SPEC §7.A): black on white, large targets, AA+ contrast. */
+
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --accent: #ffd400;
+  --danger: #ff3030;
+  --muted: #9a9a9a;
+  --gap: 0.5rem;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+  font-size: 18px;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
+  min-height: 100vh;
+}
+
+/* Connect screen */
+.connect {
+  max-width: 32rem;
+  margin: 4rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.token-input,
+.connect-submit {
+  font-size: 1.2rem;
+  padding: 0.75rem;
+}
+.connect-hint {
+  color: var(--muted);
+}
+.connect-error {
+  color: var(--danger);
+  font-weight: bold;
+}
+
+/* Banner + status */
+.banner {
+  padding: 0.75rem;
+  text-align: center;
+  font-weight: bold;
+  border: 2px solid var(--fg);
+}
+.banner.active {
+  background: var(--danger);
+  color: var(--fg);
+  animation: pulse 1s infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+.status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.status[data-state="status.degraded"] {
+  color: var(--accent);
+}
+
+/* Draft */
+.draft {
+  display: block;
+  min-height: 3rem;
+  padding: 0.75rem;
+  font-size: 1.6rem;
+  border: 2px solid var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.draft.empty {
+  color: var(--muted);
+}
+
+/* Suggestions: three fixed slots (SPEC §7.A) */
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap);
+}
+.suggestion {
+  min-height: 3rem;
+  font-size: 1.1rem;
+  background: #111;
+  color: var(--fg);
+  border: 2px solid var(--muted);
+  cursor: pointer;
+}
+
+/* Keyboard + dwell gauge */
+.keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  flex: 1;
+}
+.key-row {
+  display: flex;
+  gap: var(--gap);
+  flex: 1;
+}
+.key {
+  position: relative;
+  flex: 1;
+  min-height: 3.5rem;
+  font-size: 1.4rem;
+  background: #1a1a1a;
+  color: var(--fg);
+  border: 2px solid var(--muted);
+  cursor: pointer;
+  overflow: hidden;
+}
+.key-action {
+  flex: 2;
+}
+.key.focused {
+  border-color: var(--accent);
+}
+/* Dwell gauge driven by the --dwell custom property (0..1). */
+.key-gauge {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 0.35rem;
+  width: calc(var(--dwell, 0) * 100%);
+  background: var(--accent);
+}
+.key-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* Actions: PARLER invariant, urgence prominent */
+.actions {
+  display: flex;
+  gap: var(--gap);
+}
+.speak {
+  flex: 3;
+  min-height: 4rem;
+  font-size: 1.6rem;
+  font-weight: bold;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  cursor: pointer;
+}
+.emergency {
+  flex: 1;
+  min-height: 4rem;
+  font-size: 1.2rem;
+  background: #330000;
+  color: var(--danger);
+  border: 2px solid var(--danger);
+  cursor: pointer;
+}
+.emergency.armed {
+  background: var(--danger);
+  color: #fff;
+  animation: pulse 0.6s infinite;
+}
+.emergency-cancel {
+  flex: 1;
+  min-height: 4rem;
+}

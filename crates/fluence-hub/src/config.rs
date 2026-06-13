@@ -50,6 +50,10 @@ pub struct HubConfig {
     pub llama_model_path: Option<PathBuf>,
     /// Context window passed to `llama-server` (`-c`).
     pub llama_context_size: u32,
+    /// Directory of the built web composer to serve as a same-origin PWA
+    /// (PLAN 5.3). When set, the hub serves it as a fallback under `/`, after
+    /// the API routes, with an SPA fallback to `index.html`.
+    pub web_dir: Option<PathBuf>,
 }
 
 impl Default for HubConfig {
@@ -64,6 +68,7 @@ impl Default for HubConfig {
             llama_server_command: None,
             llama_model_path: None,
             llama_context_size: DEFAULT_LLAMA_CONTEXT,
+            web_dir: None,
         }
     }
 }
@@ -175,6 +180,9 @@ impl HubConfig {
                 value,
                 reason: format!("{e}"),
             })?;
+        }
+        if let Some(value) = lookup("FLUENCE_WEB_DIR") {
+            self.web_dir = Some(PathBuf::from(value));
         }
         Ok(())
     }
