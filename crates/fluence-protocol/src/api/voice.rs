@@ -3,7 +3,8 @@
 //! Voice API: `/voice/speak` and `/voice/voices` (SPEC §5.A, §6).
 //!
 //! `speak` is the **P0 priority class** of the scheduler (D-3.3): it
-//! preempts everything. The response is streamed audio (Opus), not JSON.
+//! preempts everything. The response is streamed audio (WAV in v0 — ADR-0009;
+//! Opus for LAN/home mode is deferred to Phase 7), not JSON.
 //!
 //! Stability: **stable** (A1 core — basic voice; the cloning pipeline is a
 //! P2 domain and not part of this contract yet).
@@ -13,8 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::VoiceId;
 
-/// `POST /voice/speak` request. Response: streamed audio
-/// (`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).
+/// `POST /voice/speak` request. Response: streamed audio (`audio/wav` in v0 —
+/// ADR-0009), first sample < 200 ms (SPEC §5.A).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SpeakRequest {
     /// Text to vocalize. **P0 content** — never logged.

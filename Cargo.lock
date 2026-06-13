@@ -539,6 +539,7 @@ dependencies = [
  "fluence-ngram",
  "fluence-protocol",
  "fluence-store",
+ "fluence-voice",
  "rand 0.10.1",
  "secrecy",
  "serde",
@@ -631,6 +632,13 @@ dependencies = [
 [[package]]
 name = "fluence-voice"
 version = "0.0.0"
+dependencies = [
+ "fluence-protocol",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
 
 [[package]]
 name = "fluencectl"

@@ -1442,7 +1442,7 @@
         "type": "string"
       },
       "SpeakRequest": {
-        "description": "`POST /voice/speak` request. Response: streamed audio\n(`audio/ogg; codecs=opus`), first sample < 200 ms (SPEC §5.A).",
+        "description": "`POST /voice/speak` request. Response: streamed audio (`audio/wav` in v0 —\nADR-0009), first sample < 200 ms (SPEC §5.A).",
         "properties": {
           "prosody": {
             "anyOf": [
@@ -3512,14 +3512,14 @@
         "responses": {
           "200": {
             "content": {
-              "audio/ogg": {
+              "audio/wav": {
                 "schema": {
                   "format": "binary",
                   "type": "string"
                 }
               }
             },
-            "description": "Streamed audio"
+            "description": "Streamed audio (WAV, 16-bit mono PCM — ADR-0009; Opus/Ogg for LAN/home mode is deferred to Phase 7)"
           },
           "default": {
             "content": {

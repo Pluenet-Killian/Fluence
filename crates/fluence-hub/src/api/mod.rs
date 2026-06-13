@@ -13,6 +13,7 @@ pub mod pair;
 pub mod sessions;
 pub mod suggest;
 pub mod system;
+pub mod voice;
 pub mod ws;
 
 use axum::Router;
@@ -94,6 +95,16 @@ pub const MOUNTED: &[MountedRoute] = &[
         scopes: &[Scope::Control],
     },
     MountedRoute {
+        method: "post",
+        path: "/api/v1/voice/speak",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "get",
+        path: "/api/v1/voice/voices",
+        scopes: &[Scope::Control, Scope::Care],
+    },
+    MountedRoute {
         method: "get",
         path: "/api/v1/system/health",
         scopes: &[Scope::Display, Scope::Control, Scope::Care],
@@ -142,8 +153,17 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/api/v1/system/emergency", post(system::emergency))
         .route("/api/v1/input/targets", put(input::put_targets))
+        .route("/api/v1/voice/speak", post(voice::speak))
         .route_layer(axum::middleware::from_fn(auth::require_scope(&[
             Scope::Control,
+        ])));
+
+    // Control + caregiver: the installed-voice list (SPEC §5.A scope table).
+    let voice_list = Router::new()
+        .route("/api/v1/voice/voices", get(voice::voices))
+        .route_layer(axum::middleware::from_fn(auth::require_scope(&[
+            Scope::Control,
+            Scope::Care,
         ])));
 
     // Read-only system surface: every authenticated scope.
@@ -166,6 +186,7 @@ pub fn build_router(state: AppState) -> Router {
     let authed = Router::new()
         .merge(system_only)
         .merge(control)
+        .merge(voice_list)
         .merge(observers)
         .merge(care)
         .route_layer(axum::middleware::from_fn_with_state(
