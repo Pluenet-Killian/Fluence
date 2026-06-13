@@ -9,8 +9,11 @@
       "type": "integer"
     },
     "ca_fingerprint": {
-      "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).",
-      "type": "string"
+      "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).\nPresent in home mode only.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "household_name": {
       "description": "Household name announced over mDNS (§2.A).",
@@ -24,7 +27,6 @@
   "required": [
     "api_version",
     "household_name",
-    "ca_fingerprint",
     "pairing_open"
   ],
   "title": "PairInfo",

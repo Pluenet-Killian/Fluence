@@ -59,8 +59,10 @@ pub struct PairRequest {
 /// `POST /pair` response: everything the device needs to talk to the hub.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PairResponse {
-    /// Local CA certificate (PEM) for TLS pinning (home mode, §2.A).
-    pub ca_cert: String,
+    /// Local CA certificate (PEM) for TLS pinning. Present in home mode
+    /// only — loopback embedded mode has no TLS (§2.A).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_cert: Option<String>,
     /// Per-device revocable token (header `X-Fluence-Token`).
     pub device_token: String,
     /// Scope granted by this pairing window.
@@ -75,9 +77,29 @@ pub struct PairInfo {
     /// Household name announced over mDNS (§2.A).
     pub household_name: String,
     /// Local CA fingerprint to compare on the pairing screen (TOFU path).
-    pub ca_fingerprint: String,
+    /// Present in home mode only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_fingerprint: Option<String>,
     /// Whether a pairing window is currently open.
     pub pairing_open: bool,
+}
+
+/// `POST /pair/window` request — opens the pairing window from the main
+/// UI (SPEC §2.A: pairing is only possible during an explicitly opened
+/// window; the route itself is system-scope, ADR-0005 §7).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PairWindowRequest {
+    /// Scope the resulting token will carry.
+    pub scope: Scope,
+}
+
+/// `POST /pair/window` response — what the main screen displays.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct PairWindowResponse {
+    /// Eight-digit single-use code to read out loud or scan.
+    pub code: String,
+    /// When the window closes (2 minutes).
+    pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[cfg(test)]

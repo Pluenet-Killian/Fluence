@@ -818,8 +818,11 @@
             "type": "integer"
           },
           "ca_fingerprint": {
-            "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).",
-            "type": "string"
+            "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).\nPresent in home mode only.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "household_name": {
             "description": "Household name announced over mDNS (§2.A).",
@@ -833,7 +836,6 @@
         "required": [
           "api_version",
           "household_name",
-          "ca_fingerprint",
           "pairing_open"
         ],
         "type": "object"
@@ -865,8 +867,11 @@
         "description": "`POST /pair` response: everything the device needs to talk to the hub.",
         "properties": {
           "ca_cert": {
-            "description": "Local CA certificate (PEM) for TLS pinning (home mode, §2.A).",
-            "type": "string"
+            "description": "Local CA certificate (PEM) for TLS pinning. Present in home mode\nonly — loopback embedded mode has no TLS (§2.A).",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "device_token": {
             "description": "Per-device revocable token (header `X-Fluence-Token`).",
@@ -878,9 +883,40 @@
           }
         },
         "required": [
-          "ca_cert",
           "device_token",
           "scope"
+        ],
+        "type": "object"
+      },
+      "PairWindowRequest": {
+        "description": "`POST /pair/window` request — opens the pairing window from the main\nUI (SPEC §2.A: pairing is only possible during an explicitly opened\nwindow; the route itself is system-scope, ADR-0005 §7).",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/Scope",
+            "description": "Scope the resulting token will carry."
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
+      "PairWindowResponse": {
+        "description": "`POST /pair/window` response — what the main screen displays.",
+        "properties": {
+          "code": {
+            "description": "Eight-digit single-use code to read out loud or scan.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When the window closes (2 minutes).",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at"
         ],
         "type": "object"
       },
@@ -2689,6 +2725,54 @@
         "x-fluence-stability": "experimental"
       }
     },
+    "/api/v1/pair/window": {
+      "post": {
+        "operationId": "post_pair_window",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairWindowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairWindowResponse"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Open the pairing window (main UI only; 2 min, single-use code)",
+        "tags": [
+          "pair"
+        ],
+        "x-fluence-scopes": [],
+        "x-fluence-stability": "stable"
+      }
+    },
     "/api/v1/profiles/{id}": {
       "get": {
         "operationId": "get_profiles_id",
@@ -2876,6 +2960,54 @@
       }
     },
     "/api/v1/sessions/{id}/draft": {
+      "get": {
+        "operationId": "get_sessions_id_draft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Draft"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Read the draft back (session resumption after a cut, SPEC §2.A)",
+        "tags": [
+          "sessions"
+        ],
+        "x-fluence-scopes": [
+          "control"
+        ],
+        "x-fluence-stability": "stable"
+      },
       "put": {
         "operationId": "put_sessions_id_draft",
         "parameters": [
