@@ -239,3 +239,37 @@ async fn cross_origin_browser_calls_are_refused() {
     drop(system_token);
     hub.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_oversized_draft_is_refused_and_never_buffered() {
+    // F09: a draft past the byte cap is rejected (422) *before* it is wrapped
+    // as a P0 `SecretString`, so the text never enters the hub — not RAM, not
+    // disk, not a later read. The error body carries only the limit, never the
+    // submitted text (SPEC §9.A: no P0 in errors).
+    let (hub, _dir, system_token) = test_hub().await;
+    let control = pair_device(&hub, &system_token, Scope::Control);
+    let agent = ureq::agent();
+
+    // One byte past the cap (and well under the 512 KiB body limit, so it is
+    // the *text* guard that fires, not the body guard).
+    let oversized = "a".repeat(fluence_hub::state::MAX_DRAFT_TEXT_BYTES + 1);
+    let status = match agent
+        .put(url(&hub, "/api/v1/sessions/s-big/draft"))
+        .header("X-Fluence-Token", control.as_str())
+        .send_json(serde_json::json!({ "text": oversized, "caret": 0 }))
+    {
+        Ok(response) => response.status().as_u16(),
+        Err(ureq::Error::StatusCode(code)) => code,
+        Err(error) => panic!("transport: {error}"),
+    };
+    assert_eq!(status, 422, "an oversized draft must be refused");
+
+    // The strongest no-leak proof: the refused P0 was never buffered, so a
+    // read of that session finds nothing (404) — the secret never entered.
+    assert_eq!(
+        get_status(&hub, "/api/v1/sessions/s-big/draft", Some(&control)),
+        404,
+        "the refused draft must never have been buffered (F09)"
+    );
+    hub.shutdown().await;
+}

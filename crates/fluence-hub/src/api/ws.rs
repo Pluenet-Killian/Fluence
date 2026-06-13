@@ -97,7 +97,23 @@ pub async fn upgrade(
         .filter(|topic| allowed.contains(topic))
         .collect();
 
-    upgrade.on_upgrade(move |socket| serve(socket, state, granted))
+    // Cap concurrent `/ws` per device and hub-wide so a paired-but-rogue
+    // device cannot exhaust file descriptors and starve the keyboard
+    // (F15 / SPEC §2.C). Reserved BEFORE upgrade: a refusal commits no task
+    // and no bus subscription. The guard moves into `serve`, releasing the
+    // slot when the connection ends by any path.
+    let Some(guard) = state.try_acquire_ws(&device.device_id) else {
+        state
+            .journal(
+                "ws.rejected",
+                Some(device.device_id.clone()),
+                Some("ws connection quota reached"),
+            )
+            .await;
+        return problem_response(fluence_protocol::error::ErrorCode::RateLimited, None);
+    };
+
+    upgrade.on_upgrade(move |socket| serve(socket, state, granted, guard))
 }
 
 /// Parses the comma-separated topic list, ignoring unknown names
@@ -111,8 +127,14 @@ fn parse_topics(raw: &str) -> Vec<Topic> {
 }
 
 /// Connection loop: hello, then fan out bus frames filtered by granted
-/// topics, with heartbeat pings.
-async fn serve(mut socket: WebSocket, state: AppState, granted: Vec<Topic>) {
+/// topics, with heartbeat pings. `_guard` releases this connection's `/ws`
+/// slot when the task ends, by any path (F15).
+async fn serve(
+    mut socket: WebSocket,
+    state: AppState,
+    granted: Vec<Topic>,
+    _guard: crate::state::WsConnectionGuard,
+) {
     let hello = ServerFrame::System(SystemEvent::Hello {
         v: fluence_protocol::INPUT_PROTOCOL_VERSION,
         topics: granted.clone(),

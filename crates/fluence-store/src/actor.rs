@@ -91,6 +91,13 @@ pub enum Command {
         /// Result channel.
         reply: Reply<()>,
     },
+    /// Delete drafts untouched since `older_than_micros` (TTL purge, F09).
+    PurgeStaleDrafts {
+        /// Cutoff: drafts with `updated_at_micros < older_than_micros` die.
+        older_than_micros: u64,
+        /// Result channel: number of drafts purged (metadata, never P0).
+        reply: Reply<u64>,
+    },
     /// Append a journal entry.
     JournalAppend {
         /// Entry to append.
@@ -223,6 +230,12 @@ fn dispatch(conn: &mut Connection, command: Command) -> bool {
         }
         Command::DeleteDraft { session_id, reply } => {
             let _ = reply.send(delete_draft(conn, &session_id));
+        }
+        Command::PurgeStaleDrafts {
+            older_than_micros,
+            reply,
+        } => {
+            let _ = reply.send(purge_stale_drafts(conn, older_than_micros));
         }
         Command::JournalAppend { entry, reply } => {
             let _ = reply.send(journal_append(conn, &entry));
@@ -375,6 +388,17 @@ fn delete_draft(conn: &Connection, session_id: &str) -> Result<(), StoreError> {
         params![session_id],
     )?;
     Ok(())
+}
+
+/// Deletes every draft whose last keystroke is older than the cutoff
+/// (F09 disk bound), via the `idx_drafts_updated_at` index. Returns the
+/// count purged — a plain number, safe to log (no P0 ever leaves here).
+fn purge_stale_drafts(conn: &Connection, older_than_micros: u64) -> Result<u64, StoreError> {
+    let purged = conn.execute(
+        "DELETE FROM drafts WHERE updated_at_micros < ?1",
+        params![older_than_micros],
+    )?;
+    Ok(u64::try_from(purged).unwrap_or(u64::MAX))
 }
 
 /// Appends a journal entry and trims the table back under

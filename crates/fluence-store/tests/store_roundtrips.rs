@@ -256,6 +256,49 @@ async fn journal_is_bounded_under_a_flood() {
 }
 
 #[tokio::test]
+async fn stale_draft_purge_removes_only_aged_rows() {
+    // F09 disk bound: drafts have no natural expiry (deleted only on an
+    // explicit session close), so a Control device looping PUTs under fresh
+    // ids would grow the table without bound. The TTL purge reclaims rows
+    // untouched past the cutoff, and *only* those — a live draft (touched
+    // after the cutoff) must survive.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Store::open(config_in(&dir)).await.expect("open");
+
+    // Two drafts straddling the cutoff: one aged (1 000), one fresh (3 000).
+    store
+        .upsert_draft(
+            "old".into(),
+            SecretString::from("contenu a oublier"),
+            0,
+            1_000,
+        )
+        .await
+        .expect("old");
+    store
+        .upsert_draft(
+            "fresh".into(),
+            SecretString::from("contenu intime"),
+            0,
+            3_000,
+        )
+        .await
+        .expect("fresh");
+
+    let purged = store.purge_stale_drafts(2_000).await.expect("purge");
+
+    assert_eq!(purged, 1, "exactly the aged draft is purged");
+    assert!(
+        store.draft("old".into()).await.expect("read").is_none(),
+        "an aged draft must be reclaimed (F09)"
+    );
+    assert!(
+        store.draft("fresh".into()).await.expect("read").is_some(),
+        "a draft touched after the cutoff must survive the purge"
+    );
+}
+
+#[tokio::test]
 async fn profiles_round_trip_through_contract_json() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = Store::open(config_in(&dir)).await.expect("open");
