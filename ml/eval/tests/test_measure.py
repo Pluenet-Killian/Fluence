@@ -3,20 +3,15 @@
 
 from __future__ import annotations
 
-from fluence_eval.measure import GATE_POINTS, gate_passes, value_delta_points
+from fluence_eval.measure import beats_ngram
 
 
-def test_value_delta_points_is_signed() -> None:
-    assert value_delta_points(50.0, 35.0) == 15.0
-    assert value_delta_points(30.0, 35.0) == -5.0
-
-
-def test_gate_passes_only_at_or_above_the_ten_point_margin() -> None:
-    assert gate_passes(45.0, 35.0)  # exactly +10 → pass
-    assert gate_passes(60.0, 35.0)  # well above → pass
-    assert not gate_passes(44.99, 35.0)  # just under +10 → fail
-    assert not gate_passes(35.0, 35.0)  # tie → fail
-
-
-def test_gate_margin_is_ten_points() -> None:
-    assert GATE_POINTS == 10.0
+def test_beats_ngram_requires_winning_on_both_wpm_and_ks() -> None:
+    # Ahead on both → pass.
+    assert beats_ngram(rephrase_wpm=18.0, rephrase_ks=20.0, ngram_wpm=16.0, ngram_ks=15.0)
+    # Ahead on WPM but behind on KS → fail (ADR-0008 requires both).
+    assert not beats_ngram(rephrase_wpm=18.0, rephrase_ks=10.0, ngram_wpm=16.0, ngram_ks=15.0)
+    # Ahead on KS but behind on WPM → fail.
+    assert not beats_ngram(rephrase_wpm=15.0, rephrase_ks=20.0, ngram_wpm=16.0, ngram_ks=15.0)
+    # Ties do not count (strictly greater).
+    assert not beats_ngram(rephrase_wpm=16.0, rephrase_ks=15.0, ngram_wpm=16.0, ngram_ks=15.0)

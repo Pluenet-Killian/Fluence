@@ -9,10 +9,12 @@ Runs three modes on the *same* corpus and the same KS% definition, then compares
   production ``fluence-accel`` prompt and model are measured), accepted
   *semantically* by embedding cosine (:class:`~fluence_eval.live.EmbeddingAcceptor`).
 
-The gate: ``rephrase KS% ≥ n-gram KS% + 10`` points. This is a local / nightly
-measurement — it needs a running hub (with a capable model behind it) and an
-embedding server; CI gating waits for a self-hosted reference machine (PLAN
-§0/§7). No contractual threshold is ever adjusted to make it pass.
+The gate (amended, ADR-0008): rephrase beats the n-gram on **WPM** (primary —
+the ×3 star metric, SPEC §1.2) **and** on out-of-domain **KS%** (the n-gram is
+trained on train+dev and evaluated on the held-out test split). This is a local
+/ nightly measurement — it needs a running hub (a capable model behind it) and
+an embedding server; CI gating waits for a self-hosted reference machine (PLAN
+§0/§7). No threshold is adjusted to make it pass.
 
 Usage (servers already up)::
 
@@ -28,7 +30,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from fluence_data import Dialogue, VariantKind, build_corpus_v0, load_jsonl
+from fluence_data import Dialogue, Split, VariantKind, build_corpus_v0, load_jsonl
 from fluence_eval.live import (
     DEFAULT_ACCEPT_THRESHOLD,
     EmbeddingAcceptor,
@@ -45,18 +47,17 @@ from fluence_eval.user import PREDICTION, MotorProfile
 PROFILE = MotorProfile(dwell_ms=800)
 #: Fixed seed for the word-level baselines (reproducibility).
 SEED = 20260613
-#: The value gate: rephrase must beat the n-gram by at least this many KS points.
-GATE_POINTS = 10.0
 
 
-def value_delta_points(rephrase_ks: float, ngram_ks: float) -> float:
-    """Points by which rephrase beats the n-gram (negative ⇒ it does not)."""
-    return rephrase_ks - ngram_ks
+def beats_ngram(rephrase_wpm: float, rephrase_ks: float, ngram_wpm: float, ngram_ks: float) -> bool:
+    """The amended #31 value gate (ADR-0008).
 
-
-def gate_passes(rephrase_ks: float, ngram_ks: float, *, points: float = GATE_POINTS) -> bool:
-    """Whether rephrase clears the n-gram by ``points`` KS points (PLAN T6, #31)."""
-    return value_delta_points(rephrase_ks, ngram_ks) >= points
+    Rephrase must beat the n-gram on **WPM** (primary — the ×3 star metric,
+    SPEC §1.2) **and** on **KS%** (here measured out-of-domain). Both strictly
+    greater; the old in-domain ``+10 KS points`` proxy is dropped — it was capped
+    by fragment length and inflated by an overfit n-gram.
+    """
+    return rephrase_wpm > ngram_wpm and rephrase_ks > ngram_ks
 
 
 def _post(url: str, payload: dict[str, object], token: str | None, timeout: float) -> str:
@@ -85,15 +86,20 @@ def pair_control_token(hub_url: str, system_token: str, *, timeout: float = 30.0
     return str(json.loads(paired)["device_token"])
 
 
-def _ngram_report(corpus: list[Dialogue], suite: str) -> EvalReport | None:
-    """Run the real n-gram baseline, or ``None`` when its binary is not built."""
+def _ngram_report(train: list[Dialogue], test: list[Dialogue], suite: str) -> EvalReport | None:
+    """Run the real n-gram baseline, or ``None`` when its binary is not built.
+
+    Trains on ``train`` (train+dev) and evaluates on ``test`` — never on its own
+    training data — so the baseline is honest (out-of-domain), not the inflated
+    in-domain number of a tiny corpus the model has memorised (ADR-0008).
+    """
     binary = locate_ngram_binary()
     if binary is None:
         return None
     with NgramServer.spawn(binary) as server:
-        train_on_corpus(server, corpus)
+        train_on_corpus(server, train)
         mode = Mode("ngram", lambda: NgramSource(server), PREDICTION)
-        return run_corpus(corpus, mode, profile=PROFILE, seed=SEED, suite=suite)
+        return run_corpus(test, mode, profile=PROFILE, seed=SEED, suite=suite)
 
 
 def _summary(reports: dict[str, EvalReport]) -> str:
@@ -108,14 +114,26 @@ def _summary(reports: dict[str, EvalReport]) -> str:
 
 
 def cmd_measure(args: argparse.Namespace) -> int:
-    """Run the three modes, print the table, and apply the value gate."""
+    """Run the three modes on the held-out test split and apply the value gate."""
     corpus = load_jsonl(args.corpus) if args.corpus is not None else build_corpus_v0()
+    train = [d for d in corpus if d.split in (Split.TRAIN, Split.DEV)]
+    test = [d for d in corpus if d.split == Split.TEST]
+    if not test:
+        # No frozen split: fall back to the whole corpus, but then the n-gram is
+        # overfit in-domain and its KS% is inflated — say so (ADR-0008).
+        print(
+            "warning: corpus has no test split; measuring in-domain "
+            "(the n-gram is overfit, its KS% is inflated)",
+            file=sys.stderr,
+        )
+        train, test = corpus, corpus
+
     token: str = args.token or pair_control_token(
         args.hub_url, (args.data_dir / "system.token").read_text(encoding="utf-8").strip()
     )
 
     rephrase = evaluate_rephrase(
-        corpus,
+        test,
         HubRephraseSource(args.hub_url, token),
         EmbeddingAcceptor(EmbeddingClient(args.embed_url), threshold=args.threshold),
         suite="value",
@@ -124,11 +142,11 @@ def cmd_measure(args: argparse.Namespace) -> int:
     )
     reports: dict[str, EvalReport] = {
         "letter_by_letter": run_corpus(
-            corpus, letter_by_letter_mode(), profile=PROFILE, seed=SEED, suite="value"
+            test, letter_by_letter_mode(), profile=PROFILE, seed=SEED, suite="value"
         ),
         "rephrase": rephrase,
     }
-    ngram = _ngram_report(corpus, "value")
+    ngram = _ngram_report(train, test, "value")
     if ngram is not None:
         reports = {
             "letter_by_letter": reports["letter_by_letter"],
@@ -147,12 +165,12 @@ def cmd_measure(args: argparse.Namespace) -> int:
     if ngram is None:
         print("\nn-gram binary not built — cannot apply the value gate.", file=sys.stderr)
         return 0
-    delta = value_delta_points(rephrase.aggregate.ks_pct, ngram.aggregate.ks_pct)
-    verdict = "PASS" if gate_passes(rephrase.aggregate.ks_pct, ngram.aggregate.ks_pct) else "FAIL"
+    r, n = rephrase.aggregate, ngram.aggregate
+    verdict = "PASS" if beats_ngram(r.wpm, r.ks_pct, n.wpm, n.ks_pct) else "FAIL"
     print(
-        f"\nvalue gate (#31): rephrase {rephrase.aggregate.ks_pct:.2f} - n-gram "
-        f"{ngram.aggregate.ks_pct:.2f} = {delta:+.2f} pts "
-        f"(need >= {GATE_POINTS:.0f}) -> {verdict}"
+        f"\nvalue gate (#31, ADR-0008): rephrase vs n-gram | "
+        f"WPM {r.wpm:.2f} vs {n.wpm:.2f} ({r.wpm - n.wpm:+.2f}), "
+        f"KS% {r.ks_pct:.2f} vs {n.ks_pct:.2f} ({r.ks_pct - n.ks_pct:+.2f}) -> {verdict}"
     )
     return 0 if verdict == "PASS" else 1
 
