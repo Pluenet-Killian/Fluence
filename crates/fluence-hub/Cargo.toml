@@ -18,6 +18,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["serde", "c
 directories = "6.0.0"
 fluence-accel = { version = "0.0.0", path = "../fluence-accel" }
 fluence-inference = { version = "0.0.0", path = "../fluence-inference" }
+fluence-input = { version = "0.0.0", path = "../fluence-input" }
 fluence-ipc = { version = "0.0.0", path = "../fluence-ipc" }
 fluence-ngram = { version = "0.0.0", path = "../fluence-ngram" }
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }

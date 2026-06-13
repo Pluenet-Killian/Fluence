@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! HTTP API of the hub (SPEC §5.A) — Phase 2 surface.
+//! HTTP API of the hub (SPEC §5.A) — the mounted surface grows phase by phase.
 //!
 //! The router is built from [`MOUNTED`], a local table of (method, path,
 //! scopes); a test asserts it against the `fluence-protocol` registry
 //! (same path ⇒ same scopes, and mounted ⊆ declared) so the implementation
-//! cannot drift from the contract. Routes of later phases (suggest,
-//! next-chars…) are simply not mounted yet: a 404 is honest — the
-//! capability does not exist.
+//! cannot drift from the contract. Routes of unbuilt capabilities are simply
+//! not mounted yet: a 404 is honest — the capability does not exist.
 
+pub mod input;
 pub mod pair;
 pub mod sessions;
 pub mod suggest;
@@ -35,8 +35,8 @@ pub struct MountedRoute {
     pub scopes: &'static [Scope],
 }
 
-/// Phase 2 mounted surface. Kept in sync with [`build_router`] by
-/// proximity and asserted against the registry by test.
+/// The mounted surface. Kept in sync with [`build_router`] by proximity and
+/// asserted against the registry by test.
 pub const MOUNTED: &[MountedRoute] = &[
     MountedRoute {
         method: "post",
@@ -89,6 +89,11 @@ pub const MOUNTED: &[MountedRoute] = &[
         scopes: &[Scope::Control],
     },
     MountedRoute {
+        method: "put",
+        path: "/api/v1/input/targets",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
         method: "get",
         path: "/api/v1/system/health",
         scopes: &[Scope::Display, Scope::Control, Scope::Care],
@@ -136,6 +141,7 @@ pub fn build_router(state: AppState) -> Router {
             post(suggest::stream_suggest),
         )
         .route("/api/v1/system/emergency", post(system::emergency))
+        .route("/api/v1/input/targets", put(input::put_targets))
         .route_layer(axum::middleware::from_fn(auth::require_scope(&[
             Scope::Control,
         ])));
