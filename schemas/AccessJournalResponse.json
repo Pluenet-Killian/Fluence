@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "AccessJournalEntry": {
+      "description": "One access-journal entry (SPEC §2.A, §9.A).",
+      "properties": {
+        "action": {
+          "description": "Stable action name (`pair.window_opened`, `device.paired`,\n`device.revoked`, `auth.rejected`…).",
+          "type": "string"
+        },
+        "at": {
+          "description": "When the action happened.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "detail": {
+          "description": "Non-P0 context (route, device kind…). Never user content.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "device_id": {
+          "description": "Acting device id, when the action was authenticated.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "at",
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /system/journal` — the local access journal, shown in the\ncaregiver space (SPEC §2.A, §7.C). **Metadata only, never P0**\n(SPEC §9.A): entries describe access actions, never the content of a\nconversation, draft, or memory.",
+  "properties": {
+    "entries": {
+      "description": "Recent entries, newest first.",
+      "items": {
+        "$ref": "#/$defs/AccessJournalEntry"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries"
+  ],
+  "title": "AccessJournalResponse",
+  "type": "object"
+}

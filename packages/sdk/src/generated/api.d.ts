@@ -347,6 +347,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Local access journal (caregiver space; metadata only) */
+        get: operations["get_system_journal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voice/speak": {
         parameters: {
             query?: never;
@@ -438,6 +455,33 @@ export interface components {
     schemas: {
         /** @description Cancellation causes. */
         AbortReason: "superseded" | "session_closed" | "shutdown" | "unknown";
+        /** @description One access-journal entry (SPEC §2.A, §9.A). */
+        AccessJournalEntry: {
+            /**
+             * @description Stable action name (`pair.window_opened`, `device.paired`,
+             *     `device.revoked`, `auth.rejected`…).
+             */
+            action: string;
+            /**
+             * Format: date-time
+             * @description When the action happened.
+             */
+            at: string;
+            /** @description Non-P0 context (route, device kind…). Never user content. */
+            detail?: string | null;
+            /** @description Acting device id, when the action was authenticated. */
+            device_id?: string | null;
+        };
+        /**
+         * @description `GET /system/journal` — the local access journal, shown in the
+         *     caregiver space (SPEC §2.A, §7.C). **Metadata only, never P0**
+         *     (SPEC §9.A): entries describe access actions, never the content of a
+         *     conversation, draft, or memory.
+         */
+        AccessJournalResponse: {
+            /** @description Recent entries, newest first. */
+            entries: components["schemas"]["AccessJournalEntry"][];
+        };
         /**
          * @description `GET /system/capabilities` — what this installation can do
          *     (hardware tier §3, available features).
@@ -1982,6 +2026,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Error (RFC 9457) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_system_journal: {
+        parameters: {
+            query?: {
+                /** @description Maximum entries to return (newest first; default 100) */
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessJournalResponse"];
                 };
             };
             /** @description Error (RFC 9457) */

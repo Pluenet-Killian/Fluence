@@ -50,6 +50,7 @@ macro_rules! for_each_root_type {
         $apply!(crate::api::profiles::Profile);
         $apply!(crate::api::system::HealthResponse);
         $apply!(crate::api::system::CapabilitiesResponse);
+        $apply!(crate::api::system::AccessJournalResponse);
     };
 }
 

@@ -4,11 +4,14 @@
 //! (SPEC §5.A, D-3.3).
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use fluence_protocol::api::system::{
-    CapabilitiesResponse, HardwareTier, HealthResponse, WorkerHealth,
+    AccessJournalEntry, AccessJournalResponse, CapabilitiesResponse, HardwareTier, HealthResponse,
+    WorkerHealth,
 };
+use serde::Deserialize;
 
+use crate::api::problem_response;
 use crate::state::AppState;
 
 /// `GET /api/v1/system/health`: worker states and rolling latencies
@@ -56,5 +59,49 @@ fn detect_tier() -> HardwareTier {
         HardwareTier::Nominal
     } else {
         HardwareTier::Reduced
+    }
+}
+
+/// Query parameters of `GET /system/journal`.
+#[derive(Debug, Deserialize)]
+pub struct JournalQuery {
+    /// Maximum entries (newest first).
+    limit: Option<u32>,
+}
+
+/// Default number of journal entries returned when no limit is given.
+const JOURNAL_DEFAULT_LIMIT: u32 = 100;
+/// Hard cap on journal entries per call.
+const JOURNAL_MAX_LIMIT: u32 = 1000;
+
+/// `GET /api/v1/system/journal` (care scope): the local access journal
+/// (SPEC §2.A). Metadata only — the store never holds P0 here (§9.A).
+pub async fn journal(
+    State(state): State<AppState>,
+    Query(query): Query<JournalQuery>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let limit = query
+        .limit
+        .unwrap_or(JOURNAL_DEFAULT_LIMIT)
+        .min(JOURNAL_MAX_LIMIT);
+    match state.store().journal_recent(limit).await {
+        Ok(entries) => {
+            let entries = entries
+                .into_iter()
+                .map(|e| AccessJournalEntry {
+                    at: e.at,
+                    device_id: e.device_id,
+                    action: e.action,
+                    detail: e.detail,
+                })
+                .collect();
+            Json(AccessJournalResponse { entries }).into_response()
+        }
+        Err(error) => {
+            tracing::error!(%error, "journal read failed");
+            problem_response(fluence_protocol::error::ErrorCode::Internal, None)
+        }
     }
 }

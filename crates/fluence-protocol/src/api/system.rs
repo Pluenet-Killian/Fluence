@@ -176,6 +176,32 @@ pub enum HardwareTier {
     GpuHub,
 }
 
+/// `GET /system/journal` — the local access journal, shown in the
+/// caregiver space (SPEC §2.A, §7.C). **Metadata only, never P0**
+/// (SPEC §9.A): entries describe access actions, never the content of a
+/// conversation, draft, or memory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccessJournalResponse {
+    /// Recent entries, newest first.
+    pub entries: Vec<AccessJournalEntry>,
+}
+
+/// One access-journal entry (SPEC §2.A, §9.A).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccessJournalEntry {
+    /// When the action happened.
+    pub at: DateTime<Utc>,
+    /// Acting device id, when the action was authenticated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    /// Stable action name (`pair.window_opened`, `device.paired`,
+    /// `device.revoked`, `auth.rejected`…).
+    pub action: String,
+    /// Non-P0 context (route, device kind…). Never user content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
