@@ -56,6 +56,11 @@ def test_parse_transcript_strips_surrounding_quotes() -> None:
     assert parse_transcript('MOI : "bonjour"')[0].text == "bonjour"
 
 
+def test_parse_transcript_handles_markdown_bold() -> None:
+    turns = parse_transcript("**MOI :** j'ai soif\n**AUTRE :** je t'apporte de l'eau")
+    assert [turn.text for turn in turns] == ["j'ai soif", "je t'apporte de l'eau"]
+
+
 def test_parse_transcript_truncates_to_max_turns() -> None:
     raw = "\n".join(f"MOI : ligne {i}" for i in range(10))
     assert len(parse_transcript(raw)) == 6

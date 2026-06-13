@@ -179,7 +179,7 @@ def parse_transcript(raw: str) -> list[Turn]:
         speaker = _speaker_of(match.group(1))
         if speaker is None:
             continue
-        text = match.group(2).strip().strip("\"'«»").strip()
+        text = match.group(2).strip().strip("\"'«»*").strip()
         if text:
             turns.append(Turn(speaker=speaker, text=text))
     return turns[:MAX_TURNS]

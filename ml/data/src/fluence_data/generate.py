@@ -57,7 +57,7 @@ class LlamaTeacher:
         *,
         temperature: float = 0.7,
         seed: int = 20260613,
-        max_tokens: int = 256,
+        max_tokens: int = 512,
         timeout: float = 120.0,
     ) -> None:
         """Configure the chat-completion client (one local ``llama-server``)."""
@@ -68,7 +68,13 @@ class LlamaTeacher:
         self._timeout = timeout
 
     def complete(self, system: str, user: str) -> str:
-        """Return the assistant reply to a ``(system, user)`` message pair."""
+        """Return the assistant reply to a ``(system, user)`` message pair.
+
+        Thinking is disabled (``enable_thinking=False``): a reasoning teacher
+        would otherwise spend the whole token budget in a hidden ``thought``
+        channel and return empty ``content``. Disabling it yields the dialogue
+        directly — faster and complete.
+        """
         payload: dict[str, object] = {
             "messages": [
                 {"role": "system", "content": system},
@@ -78,6 +84,7 @@ class LlamaTeacher:
             "max_tokens": self._max_tokens,
             "seed": self._seed,
             "stream": False,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         data = json.loads(_post(self._chat_url, payload, timeout=self._timeout))
         return str(data["choices"][0]["message"]["content"])
