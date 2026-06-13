@@ -27,21 +27,21 @@ fn repository_conforms_to_license_layout() {
 
 /// Phase-gated commands exit with the dedicated code 2 and say which phase
 /// delivers them, so a CI job calling them too early fails loudly and
-/// explicitly rather than silently passing.
+/// explicitly rather than silently passing. (`run-eval` was gated until
+/// Phase 3 delivered it; `download-test-assets` remains gated.)
 #[test]
 fn phase_gated_commands_fail_explicitly() {
-    for (command, phase) in [("download-test-assets", "Phase 3"), ("run-eval", "Phase 3")] {
-        let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
-            .arg(command)
-            .output()
-            .expect("xtask binary runs");
-        assert_eq!(output.status.code(), Some(2), "{command} must exit with 2");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains(phase),
-            "{command} must mention {phase}, got: {stderr}"
-        );
-    }
+    let (command, phase) = ("download-test-assets", "Phase 3");
+    let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg(command)
+        .output()
+        .expect("xtask binary runs");
+    assert_eq!(output.status.code(), Some(2), "{command} must exit with 2");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(phase),
+        "{command} must mention {phase}, got: {stderr}"
+    );
 }
 
 /// No arguments and unknown commands print usage and fail with code 1.
