@@ -573,6 +573,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluence-ngram"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fluence-protocol"
 version = "0.0.0"
 dependencies = [
