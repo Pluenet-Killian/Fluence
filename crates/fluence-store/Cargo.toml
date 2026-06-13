@@ -10,3 +10,18 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
+fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
+hex = "0.4.3"
+keyring = "4.0.1"
+rand = "0.10.1"
+rusqlite = { version = "0.40.1", features = ["bundled-sqlcipher-vendored-openssl"] }
+secrecy = "0.10.3"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["sync", "rt"] }
+tracing = "0.1.44"
+
+[dev-dependencies]
+tempfile = "3.27.0"
