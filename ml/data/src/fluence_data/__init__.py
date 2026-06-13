@@ -11,6 +11,11 @@ Phase 3 (PLAN task 3.1) lands the versioned corpus format; the corpus v0
 itself (task 3.4) and the variant generators build on it.
 """
 
+from fluence_data.azerty import (
+    confusion_distribution,
+    neighbours,
+    sample_keypress,
+)
 from fluence_data.formats import (
     SCHEMA_VERSION,
     Dialogue,
@@ -36,7 +41,10 @@ __all__ = [
     "Split",
     "Turn",
     "VariantKind",
+    "confusion_distribution",
     "dump_jsonl",
     "load_jsonl",
+    "neighbours",
+    "sample_keypress",
     "split_of",
 ]

@@ -94,11 +94,15 @@ name = "fluence-eval"
 version = "0.0.0"
 source = { editable = "eval" }
 dependencies = [
+    { name = "fluence-data" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.9" }]
+requires-dist = [
+    { name = "fluence-data", editable = "data" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
 
 [[package]]
 name = "fluence-training"

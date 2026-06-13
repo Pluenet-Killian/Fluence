@@ -21,8 +21,9 @@ src = ["data/src", "training/src", "eval/src"]
 [tool.ruff.lint]
 # Typographie mathématique de la SPEC, légitime en docstring/commentaire,
 # jamais dans un identifiant : « × » (12 situations × 4 registres),
-# « − » (le vrai signe moins, p.ex. la porte « KS% −2 points » de §8.A).
-allowed-confusables = ["×", "−"]
+# « − » (le vrai signe moins, p.ex. la porte « KS% −2 points » de §8.A),
+# « – » (tiret demi-cadratin des plages, p.ex. « dwell 600–1500 ms »).
+allowed-confusables = ["×", "−", "–"]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
