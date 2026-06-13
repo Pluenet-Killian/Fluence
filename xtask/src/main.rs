@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod contracts;
+mod eval;
 mod licenses;
 
 /// Exit code for commands that exist but are not implemented in the current
@@ -38,11 +39,26 @@ fn main() -> ExitCode {
             "Phase 3",
             "no test assets are referenced yet",
         ),
-        Some("run-eval") => not_yet(
-            "run-eval",
-            "Phase 3",
-            "the evaluation harness does not exist yet",
-        ),
+        Some("run-eval") => {
+            let mut suite = String::from("pr");
+            loop {
+                match args.next().as_deref() {
+                    Some("--suite") => {
+                        let Some(value) = args.next() else {
+                            eprintln!("xtask run-eval: --suite needs a value");
+                            return ExitCode::FAILURE;
+                        };
+                        suite = value;
+                    }
+                    Some(other) => {
+                        eprintln!("xtask run-eval: unknown flag `{other}` (only --suite <name>)");
+                        return ExitCode::FAILURE;
+                    }
+                    None => break,
+                }
+            }
+            eval::run(&repo_root(), &suite)
+        }
         Some(other) => {
             eprintln!("xtask: unknown command `{other}`\n");
             print_usage();
@@ -63,7 +79,8 @@ fn print_usage() {
     eprintln!("                          regenerate contract artifacts (schemas/, OpenAPI,");
     eprintln!("                          SDK types); --check compares without writing (CI)");
     eprintln!("  download-test-assets    (Phase 3) fetch pinned test models and fixtures");
-    eprintln!("  run-eval                (Phase 3) run the evaluation harness");
+    eprintln!("  run-eval [--suite <name>]");
+    eprintln!("                          build the n-gram and run the offline eval suite");
 }
 
 /// Reports a command scheduled for a later PLAN phase and exits with

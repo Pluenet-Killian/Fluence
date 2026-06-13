@@ -105,6 +105,19 @@ jobs:
         run: cargo build -p fluence-ngram
       - name: Pytest
         run: uv run --directory ml pytest
+      # Publish the per-mode KS% table to the PR's check summary (the « delta »
+      # of PLAN 3.6). The hard regression gate itself is the pytest baseline
+      # test above; this is visibility. Linux only — the numbers are identical
+      # on both OSes by construction (integer counters).
+      - name: Eval summary (KS% per mode)
+        if: runner.os == 'Linux'
+        run: |
+          {
+            echo '### Eval — KS% per mode (corpus v0, suite pr)'
+            echo '```'
+            cargo run -q -p xtask -- run-eval --suite pr 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   contracts:
     name: contracts (T3)

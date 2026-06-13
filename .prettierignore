@@ -10,6 +10,10 @@ pnpm-lock.yaml
 schemas/
 packages/sdk/src/generated/
 
+# Baselines d'éval gelées : forme canonique = celle de fluence_eval, vérifiée
+# par le test de non-régression KS% — prettier n'y touche pas.
+ml/eval/baselines/
+
 # Textes légaux et documents fondateurs : mise en forme manuelle, hors scope.
 LICENSES/
 LICENSE

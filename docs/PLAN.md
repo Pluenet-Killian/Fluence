@@ -143,9 +143,9 @@
 - Qualité corpus : grille anti-pathos appliquée à 100 % (juge auto + relecture), stats publiées (longueurs, diversité lexicale).
 
 **Done quand**
-- [ ] `xtask run-eval` produit un rapport reproductible ; CI commente les PR avec le delta KS%.
-- [ ] Encadrement oracle/n-gram/lettre-à-lettre cohérent et documenté.
-- [ ] Le n-gram est packagé comme source de prédiction utilisable par le hub (prêt pour le fallback).
+- [x] `xtask run-eval` produit un rapport reproductible ; CI commente les PR avec le delta KS%. *(`cargo xtask run-eval --suite pr` → table KS%/WPM/acceptation déterministe ; delta publié dans le **résumé de job** par PR + porte de régression KS% > 2 pts appliquée par pytest. Le commentaire littéral dans la conversation PR = raffinement, dette #19.)*
+- [x] Encadrement oracle/n-gram/lettre-à-lettre cohérent et documenté. *(corpus v0 : LbL 0 % < n-gram 35,49 % < oracle 66,76 % ; testé bout en bout + table CLI.)*
+- [x] Le n-gram est packagé comme source de prédiction utilisable par le hub (prêt pour le fallback). *(`fluence-ngram` crate Rust, `NgramModel` `complete`/`next_char_dist`, sérialisable, sans `unsafe`.)*
 
 ---
 
@@ -266,7 +266,7 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 | 0 — Usine | ✅ terminée (2026-06-13) | `phase-0-done` | 4 workflows verts Win+Linux ; vérifications « l'usine se teste » passées ; détails session 1 |
 | 1 — Contrat | ✅ terminée (2026-06-13) | `phase-1-done` | contrat v1 complet + chaîne anti-dérive + SDK v0 + doc Pages + couverture ; détails session 2 |
 | 2 — Hub & supervision | ✅ terminée (2026-06-13) | `phase-2-done` | hub vital (bootstrap < 3 s, store SQLCipher, IPC, appairage/scopes/CORS, superviseur + kill-tests Win+Linux, WS par topics, autosave draft, `fluencectl` v0, journal d'accès) + durcissement audit adverse (F01/F06/F09/F15/G2/G7…) ; **différés en dette** : mode foyer TLS+mDNS (#10), fuzz+soak (#11) ; détails session 3 |
-| 3 — Boussole | ⬜ | — | |
+| 3 — Boussole | ✅ terminée (2026-06-13) | `phase-3-done` | harnais d'éval auto-validant (formats versionnés, métriques entières déterministes, utilisateur simulé + AZERTY, encadrement LbL/n-gram/oracle), corpus v0 (graine 15 dialogues, variantes, anti-pathos), `fluence-ngram` (crate Rust + serveur subprocess), `xtask run-eval` + porte de régression KS% en CI ; **différés en dette** : corpus v1 par teacher (#18), commentaire PR du delta (#19) ; ADR-0006 ; détails session 3 |
 | 4 — Moteur | ⬜ | — | |
 | 5 — Boucle complète | ⬜ | — | |
 | 6 — Regard | ⬜ | — | |
@@ -275,6 +275,13 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
 
 ### Journal de session
+
+**Session 3 (suite) — 2026-06-13 — Phase 3 complète.**
+- **Fait** (PR #13 formats+métriques, #14 utilisateur simulé, #15 corpus v0, #16 crate n-gram, #17 binding+sanity, #18/#19 = dette, PR run-eval) : le harnais de simulation (§8.A) est opérationnel et **s'auto-valide** par l'encadrement. `fluence_data` : format de corpus pydantic versionné (Dialogue/Turn/InputVariant, invariants typés, JSONL), matrice de confusion AZERTY, générateurs de variantes (télégraphique/bruitée/abrégée), grille anti-pathos, corpus v0 (graine 15 dialogues, 12 situations × 4 registres, golden `corpus/v0.jsonl`). `fluence_eval` : métriques KS%/WPM/acceptation/nuisibles en **compteurs entiers déterministes** (identiques Win/Linux → porte CI crédible), utilisateur simulé (dwell+fatigue, coût de scan 350+150 ms, acceptation lexicale), sources `LetterByLetter`/`Oracle`/`Ngram`, runner, CLI `run`/`check`. `fluence-ngram` : crate Rust (modèle fréquentiel, `complete`/`next_char_dist`, réutilisable par le hub) + binaire `serve` (protocole JSON-lines) piloté par l'éval. `xtask run-eval` opérationnel ; porte de régression KS% > 2 pts en CI (test baseline pytest) + delta publié au résumé de job. **Résultat v0 : LbL 0 % < n-gram 35,49 % < oracle 66,76 %** (WPM n-gram à peine > LbL : le coût de scan mange le gain — le « piège de consultation » de §8.A, capté par le harnais).
+- **Découvertes notables** : `uv run <outil>` est bloqué par Vanguard (lanceur), mais `uv sync` (libs) et `.venv\Scripts\python.exe -m <outil>` fonctionnent → gate ml locale via le python du venv ; le hook lefthook ruff (`uv run --no-sync python -m ruff`) passe car il exécute python.exe. pydantic `computed_field`+`@property` nécessite le plugin mypy + `# type: ignore[prop-decorator]` (limite mypy connue) et `extra="ignore"` pour le round-trip JSON. typos : seuls les mots FR proches d'une typo anglaise sont à allowlister (× / − / – autorisés comme confusables).
+- **Déviations consignées** : ADR-0006 **amendé** — binding éval↔n-gram par **serveur subprocess** plutôt que PyO3/maturin (build natif dans le job CI Python + blocage Vanguard local évités ; le vrai crate est toujours mesuré, l'esprit « pas de réimplémentation » tenu).
+- **Dette** (PLAN §0.3) : corpus v1 par teacher LLM (§5.D étage 1, ~500 dialogues) → issue #18 ; commentaire de delta KS% dans la conversation PR (au-delà du résumé de job) → issue #19. Le KS% 35,49 % est in-domain sur la graine, **non** une revendication du socle A1 (KS% ≥ 25 % hors domaine sur le corpus v1).
+- **Reprise session suivante** : **Phase 4 « Le moteur »** — `worker-llm` (rephrase/continue/next-chars réels), sessions à KV chaud, annulation par slot, premier chiffre de valeur au harnais ; commencer par le tiny-LLM en CI et brancher `rephrase` qui doit battre le n-gram de +10 pts KS%.
 
 **Session 3 — 2026-06-13 — Phase 2 complète.**
 - **Fait** (PR #7 squelette vital, #8 `fluencectl` + journal, #9 durcissement) : `fluence-hub` assemble le cœur toujours-vivant de D-2.6 — bootstrap < 3 s (config TOML+env, port 7411 + repli dynamique), `tracing` à redaction P0 (`SecretString` + denylist de champs), arrêt propre ; `fluence-store` SQLCipher (acteur mono-thread, WAL+`synchronous=FULL`, migrations sur `user_version`, tokens hashés SHA-256, journal d'accès sans P0) ; `fluence-ipc` (frames JSON préfixées longueur, cap 16 MiB, UDS/named pipes) ; appairage (fenêtre 2 min, code usage unique, brute-force → 429), tokens à scopes, CORS allowlist, 401 uniforme ; superviseur (backoff+jitter, `system.degraded`) ; WS `/ws` par topics filtrés par scope ; autosave draft. **kill-tests** verts Win+Linux (worker tué → `degraded` < 500 ms ; hub -9 en frappe → draft restauré perte ≤ 1 s ; 50 cycles → RSS stable). `fluencectl` v0 (health/pair/watch/journal) en client de l'API publique (D-2.1). `GET /system/journal` (scope `care`) via la chaîne anti-dérive.
