@@ -62,6 +62,10 @@ pub struct HubConfig {
     pub piper_voice: Option<PathBuf>,
     /// Voice id advertised for the configured Piper voice.
     pub piper_voice_id: String,
+    /// Directory of the built web composer to serve as a same-origin PWA
+    /// (PLAN 5.3). When set, the hub serves it as a fallback under `/`, after
+    /// the API routes, with an SPA fallback to `index.html`.
+    pub web_dir: Option<PathBuf>,
 }
 
 impl Default for HubConfig {
@@ -80,6 +84,7 @@ impl Default for HubConfig {
             piper_command: None,
             piper_voice: None,
             piper_voice_id: "piper:fr_FR-siwis-medium".to_owned(),
+            web_dir: None,
         }
     }
 }
@@ -207,6 +212,9 @@ impl HubConfig {
         }
         if let Some(value) = lookup("FLUENCE_PIPER_VOICE_ID") {
             self.piper_voice_id = value;
+        }
+        if let Some(value) = lookup("FLUENCE_WEB_DIR") {
+            self.web_dir = Some(PathBuf::from(value));
         }
         Ok(())
     }

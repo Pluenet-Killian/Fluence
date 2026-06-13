@@ -1,4 +1,4 @@
-# Workspace pnpm — briques TypeScript (SPEC §2.B).
-# apps/web-client rejoindra la liste en Phase 5.
+# Workspace pnpm — briques TypeScript (SPEC §2.B) + applications (apps/).
 packages:
   - "packages/*"
+  - "apps/web-client"

@@ -28,6 +28,9 @@ exemple = "exemple"
 demandes = "demandes"
 symbole = "symbole"
 confirme = "confirme"
+# Chaînes FR de l'interface du composeur web (§7.A).
+appareil = "appareil"
+Espace = "Espace"
 
 [files]
 extend-exclude = [
