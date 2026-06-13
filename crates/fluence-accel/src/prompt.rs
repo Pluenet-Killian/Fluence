@@ -75,7 +75,7 @@ pub struct ContextParts {
 pub struct AssembledPrompt {
     /// The full prompt text.
     pub text: String,
-    /// Estimated token count (budget-only — see [`crate::tokens`]).
+    /// Estimated token count (budget-only — see [`crate::estimate_tokens`]).
     pub estimated_tokens: usize,
     /// How many of the supplied turns survived truncation.
     pub included_turns: usize,
