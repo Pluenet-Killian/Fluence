@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use fluence_inference::{LlmBackend, UnavailableBackend};
+use fluence_ngram::NgramModel;
 use fluence_protocol::api::pair::Scope;
 use fluence_store::{DraftWrite, Store};
 use secrecy::SecretString;
@@ -156,6 +158,13 @@ struct Inner {
     /// Concurrent `/ws` connections, per device and in total (F15 `DoS`
     /// guard).
     ws_counters: Mutex<WsCounters>,
+    /// The LLM backend the acceleration engine calls. Defaults to
+    /// [`UnavailableBackend`] until a `worker-llm` is configured, so the engine
+    /// degrades to `fallback` rather than failing (D-2.6).
+    engine: Arc<dyn LlmBackend>,
+    /// The always-loaded n-gram fallback (D-2.6 « le clavier parle toujours »):
+    /// serves predictions whenever the LLM backend is unavailable.
+    fallback: Arc<NgramModel>,
 }
 
 /// Cheaply cloneable hub state.
@@ -163,10 +172,31 @@ struct Inner {
 pub struct AppState(Arc<Inner>);
 
 impl AppState {
-    /// Assembles the state. Workers register afterwards
+    /// Assembles the state with the default backend ([`UnavailableBackend`])
+    /// and an empty n-gram fallback. Workers register afterwards
     /// ([`AppState::register_worker`]).
     #[must_use]
     pub fn new(config: HubConfig, store: Store, bus: EventBus) -> Self {
+        Self::new_with(
+            config,
+            store,
+            bus,
+            Arc::new(UnavailableBackend),
+            Arc::new(NgramModel::new()),
+        )
+    }
+
+    /// Assembles the state with an explicit LLM backend and n-gram fallback.
+    /// Tests inject a stub backend or a trained fallback; production wires the
+    /// real worker bridge here once it exists.
+    #[must_use]
+    pub fn new_with(
+        config: HubConfig,
+        store: Store,
+        bus: EventBus,
+        engine: Arc<dyn LlmBackend>,
+        fallback: Arc<NgramModel>,
+    ) -> Self {
         Self(Arc::new(Inner {
             config,
             store,
@@ -180,6 +210,8 @@ impl AppState {
             draft_generation: AtomicU64::new(0),
             workers: Mutex::new(Vec::new()),
             ws_counters: Mutex::new(WsCounters::default()),
+            engine,
+            fallback,
         }))
     }
 
@@ -199,6 +231,18 @@ impl AppState {
     #[must_use]
     pub fn bus(&self) -> &EventBus {
         &self.0.bus
+    }
+
+    /// The LLM backend the acceleration engine calls.
+    #[must_use]
+    pub fn engine(&self) -> &Arc<dyn LlmBackend> {
+        &self.0.engine
+    }
+
+    /// The n-gram fallback predictor (D-2.6 « le clavier parle toujours »).
+    #[must_use]
+    pub fn fallback(&self) -> &Arc<NgramModel> {
+        &self.0.fallback
     }
 
     /// Hub start time (health).

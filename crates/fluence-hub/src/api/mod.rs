@@ -11,6 +11,7 @@
 
 pub mod pair;
 pub mod sessions;
+pub mod suggest;
 pub mod system;
 pub mod ws;
 
@@ -74,6 +75,11 @@ pub const MOUNTED: &[MountedRoute] = &[
     },
     MountedRoute {
         method: "get",
+        path: "/api/v1/sessions/{id}/next-chars",
+        scopes: &[Scope::Control],
+    },
+    MountedRoute {
+        method: "get",
         path: "/api/v1/system/health",
         scopes: &[Scope::Display, Scope::Control, Scope::Care],
     },
@@ -114,6 +120,7 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/sessions/{id}/draft",
             put(sessions::put_draft).get(sessions::get_draft),
         )
+        .route("/api/v1/sessions/{id}/next-chars", get(suggest::next_chars))
         .route_layer(axum::middleware::from_fn(auth::require_scope(&[
             Scope::Control,
         ])));
