@@ -10,13 +10,10 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+mod assets;
 mod contracts;
 mod eval;
 mod licenses;
-
-/// Exit code for commands that exist but are not implemented in the current
-/// phase — distinct from `1` (check failed) so CI wiring mistakes are loud.
-const EXIT_NOT_YET_AVAILABLE: u8 = 2;
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
@@ -34,11 +31,17 @@ fn main() -> ExitCode {
             };
             contracts::run(&repo_root(), check)
         }
-        Some("download-test-assets") => not_yet(
-            "download-test-assets",
-            "Phase 3",
-            "no test assets are referenced yet",
-        ),
+        Some("download-test-assets") => {
+            let check = match args.next().as_deref() {
+                Some("--check") => true,
+                None => false,
+                Some(other) => {
+                    eprintln!("xtask download-test-assets: unknown flag `{other}` (only --check)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            assets::run(&repo_root(), check)
+        }
         Some("run-eval") => {
             let mut suite = String::from("pr");
             loop {
@@ -78,16 +81,11 @@ fn print_usage() {
     eprintln!("  check-contracts [--check]");
     eprintln!("                          regenerate contract artifacts (schemas/, OpenAPI,");
     eprintln!("                          SDK types); --check compares without writing (CI)");
-    eprintln!("  download-test-assets    (Phase 3) fetch pinned test models and fixtures");
+    eprintln!("  download-test-assets [--check]");
+    eprintln!("                          fetch the pinned test models (sha256-verified,");
+    eprintln!("                          resumable); --check validates the manifest only");
     eprintln!("  run-eval [--suite <name>]");
     eprintln!("                          build the n-gram and run the offline eval suite");
-}
-
-/// Reports a command scheduled for a later PLAN phase and exits with
-/// [`EXIT_NOT_YET_AVAILABLE`].
-fn not_yet(command: &str, phase: &str, reason: &str) -> ExitCode {
-    eprintln!("xtask {command}: not available yet — arrives in PLAN {phase} ({reason}).");
-    ExitCode::from(EXIT_NOT_YET_AVAILABLE)
 }
 
 /// The repository root (the parent of the `xtask` crate, wherever cargo was

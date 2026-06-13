@@ -14,4 +14,13 @@ workspace = true
 
 [dependencies]
 fluence-protocol = { version = "0.0.0", path = "../crates/fluence-protocol" }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+# Model management v0 (PLAN 4.3): fetch + integrity-verify pinned test models.
+# ureq keeps its default features here — we download over HTTPS (Hugging Face),
+# so a TLS backend (rustls) is required, unlike the loopback-only inference client.
+ureq = "3.3.0"
+sha2 = "0.10.9"
+
+[dev-dependencies]
+tempfile = "3.27.0"

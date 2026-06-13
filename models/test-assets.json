@@ -1,0 +1,15 @@
+{
+  "$comment": "Pinned test models for Fluence (PLAN 4.3, D-3.2 minimal). The sha256 is the integrity contract: download-test-assets refuses any file whose hash does not match, so the URL is a hint (it may follow a branch) while the content is verified, never trusted. These tiny models validate the engine MECHANICS only (sessions, KV, SSE, next-chars) — never quality (PLAN §1). The llama-server binary is infrastructure, provisioned by CI/dev, not a managed model.",
+  "version": 1,
+  "models": [
+    {
+      "id": "tiny-llm",
+      "file": "smollm2-135m-instruct-q4_k_m.gguf",
+      "license": "Apache-2.0",
+      "purpose": "LLM engine mechanics in CI and locally (greedy, seeded). Not a quality baseline.",
+      "url": "https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "sha256": "ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747",
+      "bytes": 105454144
+    }
+  ]
+}
