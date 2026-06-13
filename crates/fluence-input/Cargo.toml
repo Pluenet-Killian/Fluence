@@ -10,3 +10,10 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+# The protocol owns the input vocabulary (targets, rects, selection events).
+fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
+
+[dev-dependencies]
+proptest = "1"
