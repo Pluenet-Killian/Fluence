@@ -5,6 +5,55 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
+## Phase 4 — Le moteur : LLM réel (en cours — 2026-06-13)
+
+### Ajouté
+
+- `LlamaServerBackend` (`fluence-inference`, ureq) : backend LLM local **réalisé
+  en client HTTP pur Rust** vers un sous-processus `llama-server` (ADR-0007
+  amendé — le FFI `llama-cpp-2` ne build pas sur windows-gnu, rétrogradé en
+  optimisation future, #25). `generate` streaming SSE **annulable** par slot ;
+  `next_chars` via `/completion` `n_predict:1`+`n_probs` → agrégation des
+  log-probabilités par **premier caractère**, renormalisée ; `is_healthy()`.
+  Aucune compilation C++/CMake dans le build ; crash isolé par la frontière de
+  processus (D-2.6).
+- **Gestion de modèles v0** (`cargo xtask download-test-assets`) : manifeste
+  `models/test-assets.json` (URL + **sha256** + taille = contrat d'intégrité),
+  téléchargement **repris** (`Range`), **idempotent**, `--check` sans réseau,
+  cache `.fluence-cache/models` (`FLUENCE_MODELS_DIR`). Tiny-LLM SmolLM2-135M
+  (mécanique uniquement, jamais la qualité — PLAN §1). Le binaire `llama-server`
+  est de l'infrastructure (provisionnée CI/dev), pas un modèle géré.
+- `fluence-hub` : **spawn et supervision de `llama-server`** — config
+  `FLUENCE_LLAMA_SERVER_BIN`/`_MODEL`/`_CONTEXT` ; `SupervisedLlama` (moteur gated
+  par un flag `ready` partagé → tant que non prêt, **dégradation n-gram
+  automatique**, jamais d'attente sur une socket morte) ; supervision (port
+  loopback stable, poll `GET /health`, restart à backoff, `system.degraded`,
+  worker dans `/system/health`). `stdout`/`stderr` du serveur **jetés** (logs
+  potentiellement P0, §9.A).
+- `fluencectl suggest --mode rephrase|continue` : client SSE de l'engine,
+  affiche les suggestions et leur origine (`model`/`n-gram`/`memory`).
+
+### Vérifié
+
+- **Kill-test LLM (critère « Done quand » #3)** : un binaire de test
+  `fake-llama-server` permet à un test d'intégration de piloter le **vrai**
+  chemin de supervision via le binaire hub — `/suggest` streame des suggestions
+  d'origine `model` à chaud, puis **dégrade en 200 (jamais 5xx)** à la mort du
+  serveur (« le clavier parle toujours », D-2.6) — hermétique, sans modèle
+  lourd.
+- **Pipeline réel validé localement de bout en bout** : `fluencectl suggest` →
+  hub → **vrai** `llama-server` supervisé + SmolLM2 → suggestion `[model]`.
+
+### En cours (critère valeur #2 — workstream ML/nightly)
+
+- « `rephrase` bat le n-gram d'au moins +10 points de KS% » : exige un **nouveau
+  mode d'évaluation phrase-niveau** (acceptation **sémantique** par embeddings,
+  le harnais v0 étant prédiction de mot), une **source Rephrase** pilotant le
+  vrai `/suggest`, un **modèle capable** (le tiny-LLM ne vaut que pour la
+  mécanique) et un **job nightly self-hosted**. Tag `phase-4-done` non posé tant
+  que ce critère n'est pas atteint (jamais d'ajustement de seuil — PLAN §0).
+  Détails et plan de reprise : PLAN §5, journal session 4.
+
 ## Phase 3 — La boussole : harnais d'évaluation (2026-06-13)
 
 ### Ajouté
