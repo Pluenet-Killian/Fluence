@@ -3,16 +3,25 @@
 /**
  * `@fluence/sdk` — typed client for the Fluence hub API (SPEC §2.B, D-2.5).
  *
- * Will combine types generated from `fluence-protocol` (the single source of
- * truth — JSON Schema → OpenAPI 3.1 → `src/generated/`) with a thin ergonomic
- * layer: fetch + SSE for generations, WebSocket for events, zero business
- * logic. CI fails when generated artifacts drift from the Rust definitions
- * (`cargo xtask check-contracts`).
+ * Generated types (`cargo xtask check-contracts`, drift-checked in CI) plus
+ * a thin ergonomic layer: fetch + SSE for generations, WebSocket for
+ * events, zero business logic.
  *
- * PLAN Phase 1 populates this package (task 1.4). Until then it exports
- * nothing.
+ * ```ts
+ * const client = new FluenceClient({ baseUrl: "http://127.0.0.1:7411", token });
+ * const { session_id } = await client.createSession();
+ * for await (const event of client.suggest(session_id, {
+ *   mode: "rephrase", draft: "veu eau frache ce soir", n: 3, slot: "main",
+ * })) {
+ *   if (event.event === "final") show(event.data.suggestions);
+ * }
+ * ```
  *
  * @packageDocumentation
  */
 
-export {};
+export { FluenceClient, FluenceProblemError, type FluenceClientOptions } from "./client.js";
+export { buildWsUrl, openSocket } from "./ws.js";
+export type { FluenceSocket, SocketOptions, TopicHandlers } from "./ws.js";
+export { parseSseStream, type RawSseEvent } from "./sse.js";
+export type * from "./types.js";

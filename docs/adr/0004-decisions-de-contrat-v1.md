@@ -18,7 +18,10 @@ l'esprit de la SPEC ; aucun ne la contredit.
    Évite un aller-retour de souscription avant les premiers événements ; le
    « champ v:1 négocié à l'ouverture » (§4.A) est réalisé à l'ouverture même.
    Changement d'abonnement = reconnexion (rare : la reprise §2.A est déjà
-   prévue).
+   prévue). *Amendé (PR SDK)* : le **token passe aussi en query param**
+   (`&token=…`) pour le WS — l'API `WebSocket` des navigateurs ne peut pas
+   poser le header `X-Fluence-Token`. Surface acceptée : loopback sans TLS
+   ou TLS local ; le hub ne journalise jamais la query string de `/ws`.
 2. **Topics réservés sans payload v1** : `asr`, `suggest`, `voice` sont des
    noms d'abonnement valides mais aucune frame n'y circule avant P2 — leurs
    messages seront spécifiés avec leurs phases (8+). L'enveloppe
