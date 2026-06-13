@@ -534,6 +534,7 @@ dependencies = [
  "directories",
  "fluence-accel",
  "fluence-inference",
+ "fluence-input",
  "fluence-ipc",
  "fluence-ngram",
  "fluence-protocol",
