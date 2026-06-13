@@ -12,6 +12,8 @@ extend-ignore-re = ["«[^»]*»"]
 # Mots français des chaînes d'exemple/test qui ressemblent à des typos
 # anglaises. S'allonge au besoin — on ne traduit pas des données réalistes.
 fille = "fille"
+# Registre du corpus d'éval (§5.D) : « familier », pas l'anglais « familiar ».
+familier = "familier"
 
 [files]
 extend-exclude = [

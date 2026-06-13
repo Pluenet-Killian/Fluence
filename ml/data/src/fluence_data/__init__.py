@@ -1,12 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0
 """Synthetic dialogue generation and corpus preparation (SPEC §5.D, D-5.5).
 
-Will implement the controlled generation matrix (12 situations × 4 registers,
+Implements the controlled generation matrix (12 situations × 4 registers,
 strict anti-pathos instruction), the input-variant generators (telegraphic,
 AZERTY spatial-confusion noise, abbreviations), automatic-judge filtering and
 dataset hygiene (versioned JSONL, datasheets, frozen splits — the test split
 never tunes prompts).
 
-PLAN Phase 3 builds corpus v0 (task 3.4); this package stays empty until
-then.
+Phase 3 (PLAN task 3.1) lands the versioned corpus format; the corpus v0
+itself (task 3.4) and the variant generators build on it.
 """
+
+from fluence_data.formats import (
+    SCHEMA_VERSION,
+    Dialogue,
+    InputVariant,
+    Register,
+    Situation,
+    Speaker,
+    Split,
+    Turn,
+    VariantKind,
+    dump_jsonl,
+    load_jsonl,
+    split_of,
+)
+
+__all__ = [
+    "SCHEMA_VERSION",
+    "Dialogue",
+    "InputVariant",
+    "Register",
+    "Situation",
+    "Speaker",
+    "Split",
+    "Turn",
+    "VariantKind",
+    "dump_jsonl",
+    "load_jsonl",
+    "split_of",
+]
