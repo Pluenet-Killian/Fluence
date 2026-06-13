@@ -24,6 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
+      - name: Install NASM (Windows, vendored OpenSSL)
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
       - uses: Swatinem/rust-cache@v2
       - name: Rust tests (release)
         run: cargo test --workspace --release

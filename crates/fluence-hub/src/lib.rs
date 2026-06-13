@@ -93,13 +93,7 @@ impl RunningHub {
 pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
     let store = Store::open(StoreConfig {
         path: config.data_dir.join("store.db"),
-        key: match &config.store_key_file {
-            Some(path) => KeySource::File(path.clone()),
-            None => KeySource::Keyring {
-                service: "fluence".to_owned(),
-                entry: "store-key".to_owned(),
-            },
-        },
+        key: store_key_source(&config),
     })
     .await?;
 
@@ -154,6 +148,24 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
         served,
         state,
     })
+}
+
+/// Chooses where the store master key lives. An explicit `store_key_file`
+/// always wins; otherwise Windows uses the OS keystore (DPAPI) and other
+/// platforms use a 0600 file in the data dir (ADR-0005; the headless Linux
+/// hub has no desktop keystore).
+fn store_key_source(config: &HubConfig) -> KeySource {
+    if let Some(path) = &config.store_key_file {
+        return KeySource::File(path.clone());
+    }
+    if cfg!(windows) {
+        KeySource::Keyring {
+            service: "fluence".to_owned(),
+            entry: "store-key".to_owned(),
+        }
+    } else {
+        KeySource::File(config.data_dir.join("store.key"))
+    }
 }
 
 /// Creates (first run) or verifies the local system token and writes it

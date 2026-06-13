@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Master-key management (SPEC §9.A, D-9.1): 32 random bytes, stored in
-//! the OS keystore (DPAPI / Secret Service) or — test and headless
-//! fallback — in a file next to the database.
+//! the OS keystore (Windows DPAPI) or in a 0600 file.
+//!
+//! Platform split (ADR-0005; amends SPEC D-9.1): the SPEC named the Linux
+//! Secret Service, but it pulls a D-Bus system dependency and assumes a
+//! desktop session — neither holds for the headless Linux hub (FLU-REF-3).
+//! So the OS keystore is Windows-only; elsewhere the key is a 0600 file
+//! (weaker against disk theft than a login-bound keystore — a documented
+//! trade-off, revisited with TPM/keyutils support in a later phase).
 //!
 //! The key is applied as a `SQLCipher` *raw key* (`PRAGMA key = "x'…'"`),
 //! skipping the passphrase KDF: the entropy is already maximal and startup
@@ -17,50 +23,75 @@ use crate::StoreError;
 /// Where the master key lives.
 #[derive(Debug, Clone)]
 pub enum KeySource {
-    /// OS keystore (production default — D-9.1).
+    /// OS keystore — **Windows only** (DPAPI). On other platforms this
+    /// source is rejected; callers default to [`KeySource::File`].
     Keyring {
         /// Keystore service name (`fluence`).
         service: String,
         /// Keystore entry name (`store-key`).
         entry: String,
     },
-    /// Hex key in a file (tests, headless installs without a keystore).
-    /// Created with 0o600 permissions on Unix.
+    /// Hex key in a 0600 file (tests, and the non-Windows default).
     File(PathBuf),
 }
 
 /// Loads the key, generating and persisting a fresh one on first run.
 /// Returns the 64-hex-char representation.
+///
+/// # Errors
+///
+/// [`StoreError::Key`] when the key source is unavailable or its material
+/// is malformed.
 pub fn load_or_create(source: &KeySource) -> Result<SecretString, StoreError> {
     match source {
-        KeySource::Keyring { service, entry } => {
-            let entry = keyring::Entry::new(service, entry)
-                .map_err(|e| StoreError::Key(format!("keystore unavailable: {e}")))?;
-            match entry.get_password() {
-                Ok(existing) => validate_hex(&existing).map(|()| SecretString::from(existing)),
-                Err(keyring::Error::NoEntry) => {
-                    let fresh = generate_hex();
-                    entry
-                        .set_password(fresh.expose_secret())
-                        .map_err(|e| StoreError::Key(format!("keystore write failed: {e}")))?;
-                    Ok(fresh)
-                }
-                Err(e) => Err(StoreError::Key(format!("keystore read failed: {e}"))),
-            }
+        KeySource::Keyring { service, entry } => load_or_create_keyring(service, entry),
+        KeySource::File(path) => load_or_create_file(path),
+    }
+}
+
+/// Windows: the key lives in the Credential Manager (DPAPI-backed),
+/// tying it to the user login so disk theft alone cannot decrypt the store.
+#[cfg(windows)]
+fn load_or_create_keyring(service: &str, entry: &str) -> Result<SecretString, StoreError> {
+    let entry = keyring::Entry::new(service, entry)
+        .map_err(|e| StoreError::Key(format!("keystore unavailable: {e}")))?;
+    match entry.get_password() {
+        Ok(existing) => validate_hex(&existing).map(|()| SecretString::from(existing)),
+        Err(keyring::Error::NoEntry) => {
+            let fresh = generate_hex();
+            entry
+                .set_password(fresh.expose_secret())
+                .map_err(|e| StoreError::Key(format!("keystore write failed: {e}")))?;
+            Ok(fresh)
         }
-        KeySource::File(path) => {
-            if path.exists() {
-                let raw = std::fs::read_to_string(path)
-                    .map_err(|e| StoreError::Key(format!("key file unreadable: {e}")))?;
-                let trimmed = raw.trim().to_owned();
-                validate_hex(&trimmed)?;
-                Ok(SecretString::from(trimmed))
-            } else {
-                let fresh = generate_hex();
-                write_restricted(path, fresh.expose_secret())?;
-                Ok(fresh)
-            }
-        }
+        Err(e) => Err(StoreError::Key(format!("keystore read failed: {e}"))),
+    }
+}
+
+/// Non-Windows: there is no system keystore the headless hub can rely on
+/// (the desktop Secret Service assumes a session). Callers default to a
+/// file key here; `KeySource::Keyring` is rejected rather than silently
+/// downgraded (ADR-0005; amends SPEC D-9.1).
+#[cfg(not(windows))]
+fn load_or_create_keyring(_service: &str, _entry: &str) -> Result<SecretString, StoreError> {
+    Err(StoreError::Key(
+        "OS keystore is only available on Windows; configure a key file on this platform".into(),
+    ))
+}
+
+/// File key (0600), used everywhere by tests and as the non-Windows
+/// default. Weaker than an OS keystore against disk theft — documented.
+fn load_or_create_file(path: &std::path::Path) -> Result<SecretString, StoreError> {
+    if path.exists() {
+        let raw = std::fs::read_to_string(path)
+            .map_err(|e| StoreError::Key(format!("key file unreadable: {e}")))?;
+        let trimmed = raw.trim().to_owned();
+        validate_hex(&trimmed)?;
+        Ok(SecretString::from(trimmed))
+    } else {
+        let fresh = generate_hex();
+        write_restricted(path, fresh.expose_secret())?;
+        Ok(fresh)
     }
 }
 

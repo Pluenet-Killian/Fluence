@@ -301,8 +301,12 @@ async fn run_one_instance(
                         tracing::debug!(kind = message_kind(&other), "unexpected worker message");
                     }
                     Ok(None) | Err(_) => {
-                        // Connection gone; the wait() arm reports the exit.
-                        last_pong = tokio::time::Instant::now();
+                        // The IPC channel closed: the worker is gone or
+                        // malfunctioning. Report it now rather than spin on a
+                        // perpetually-ready closed stream until wait() wins
+                        // the select (which would also mask the heartbeat).
+                        let _ = child.kill().await;
+                        return InstanceOutcome::Died("ipc connection closed".into());
                     }
                 }
             }

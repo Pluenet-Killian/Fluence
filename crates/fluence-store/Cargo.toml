@@ -15,7 +15,6 @@ workspace = true
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
 fluence-protocol = { version = "0.0.0", path = "../fluence-protocol" }
 hex = "0.4.3"
-keyring = { version = "3", features = ["windows-native", "sync-secret-service", "crypto-rust"] }
 rand = "0.10.1"
 rusqlite = { version = "0.37", features = ["bundled-sqlcipher-vendored-openssl"] }
 secrecy = "0.10.3"
@@ -24,6 +23,13 @@ serde_json = "1.0.150"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["sync", "rt"] }
 tracing = "0.1.44"
+
+# OS keystore — Windows only (DPAPI via Credential Manager; no system lib).
+# Linux's desktop Secret Service would pull libdbus and assumes a desktop
+# session, which the headless Linux hub (FLU-REF-3) does not have — there
+# the key lives in a 0600 file by default (ADR-0005; amends SPEC D-9.1).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

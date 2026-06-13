@@ -54,6 +54,22 @@ fiabilité (kill-tests), la lisibilité et le déterminisme des tests.
    jitter ±25 % **injecté** (déterministe en test). La mort d'un child est
    détectée par `wait()` (immédiat sur crash franc, < 500 ms requis) ; le
    heartbeat Ping/Pong (1 s, timeout 3 s) attrape les blocages sans mort.
+9. **Stockage de la clé maîtresse par plateforme — amendement de SPEC
+   D-9.1.** La SPEC nomme « DPAPI Windows / Secret Service Linux ». Or le
+   Secret Service tire une dépendance système D-Bus (`libdbus`) **et**
+   suppose une session de bureau — deux conditions absentes du **hub Linux
+   headless** (FLU-REF-3) et du CI. Décision :
+   - **Windows** : keystore OS via `keyring`/`windows-native` (DPAPI,
+     adossé au login, aucune lib système) — dépendance ciblée
+     `[target.'cfg(windows)'.dependencies]`.
+   - **Linux et autres** : clé dans un **fichier 0600** du dossier de
+     données par défaut (l'opérateur peut pointer ailleurs via
+     `store_key_file`). Protection moindre contre le vol de disque qu'un
+     keystore adossé au login — **caveat assumé et documenté**, à relever
+     plus tard (scellé TPM / `keyutils` persistant) quand le support
+     headless sera traité. `KeySource::Keyring` est **rejeté** hors Windows
+     (jamais dégradé en silence). Conséquence directe : plus aucune
+     dépendance système sur Linux, CI et déploiement headless propres.
 
 ## Conséquences
 
