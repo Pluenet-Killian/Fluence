@@ -14,6 +14,12 @@ extend-ignore-re = ["«[^»]*»"]
 fille = "fille"
 # Registre du corpus d'éval (§5.D) : « familier », pas l'anglais « familiar ».
 familier = "familier"
+# Vocabulaire FR des générateurs/corpus d'éval (§5.D, §8.A) confondu avec des
+# typos anglaises : mots-outils, abréviations, marqueurs de la grille, dialogues.
+sur = "sur"
+maintenant = "maintenant"
+heros = "heros"
+abord = "abord"
 
 [files]
 extend-exclude = [
