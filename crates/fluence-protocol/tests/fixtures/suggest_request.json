@@ -1,0 +1,8 @@
+{
+  "mode": "rephrase",
+  "draft": "veu eau frache ce soir",
+  "n": 3,
+  "slot": "main",
+  "constraints": { "max_chars": 120, "register": "famille" },
+  "style_profile": "default"
+}

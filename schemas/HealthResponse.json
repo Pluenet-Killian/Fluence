@@ -1,0 +1,212 @@
+{
+  "$defs": {
+    "LatencyClass": {
+      "description": "Latency classes with contractual budgets (SPEC §5.A table).",
+      "oneOf": [
+        {
+          "const": "next_chars",
+          "description": "`next-chars` on a warm KV (budget p50 20 ms / p95 50 ms).",
+          "type": "string"
+        },
+        {
+          "const": "suggest_first_delta",
+          "description": "First displayable suggest delta (300 / 600 ms).",
+          "type": "string"
+        },
+        {
+          "const": "suggest_complete",
+          "description": "Three complete suggestions (1.2 / 2.5 s).",
+          "type": "string"
+        },
+        {
+          "const": "speak_first_audio",
+          "description": "First audio sample of `speak` (200 / 400 ms).",
+          "type": "string"
+        },
+        {
+          "const": "turns",
+          "description": "Turn ingestion incl. background KV re-warm (100 / 250 ms).",
+          "type": "string"
+        },
+        {
+          "const": "input_decision",
+          "description": "Input sample → selection decision (5 / 15 ms).",
+          "type": "string"
+        }
+      ]
+    },
+    "LatencyStat": {
+      "description": "Rolling latency statistics for one request class.",
+      "properties": {
+        "class": {
+          "$ref": "#/$defs/LatencyClass",
+          "description": "Measured class."
+        },
+        "p50_ms": {
+          "description": "Median, milliseconds.",
+          "format": "double",
+          "type": "number"
+        },
+        "p95_ms": {
+          "description": "95th percentile, milliseconds.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "class",
+        "p50_ms",
+        "p95_ms"
+      ],
+      "type": "object"
+    },
+    "ModelId": {
+      "description": "A model from the registry (SPEC D-3.2).",
+      "type": "string"
+    },
+    "ModelRef": {
+      "description": "A model from the registry, pinned by version (D-3.2: a model never\nchanges silently).",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ModelId",
+          "description": "Registry id."
+        },
+        "version": {
+          "description": "Manifest version.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "WorkerHealth": {
+      "description": "Health of one worker.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Model currently loaded, if any."
+        },
+        "restart_count": {
+          "description": "Restarts since hub boot.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkerState",
+          "description": "Current state."
+        },
+        "worker": {
+          "$ref": "#/$defs/WorkerKind",
+          "description": "Which worker."
+        }
+      },
+      "required": [
+        "worker",
+        "state",
+        "restart_count"
+      ],
+      "type": "object"
+    },
+    "WorkerKind": {
+      "description": "An inference worker supervised by the hub (SPEC §2.C).\n\nUnknown kinds deserialize as [`WorkerKind::Unknown`] (forward\ncompatibility).",
+      "oneOf": [
+        {
+          "const": "llm",
+          "description": "Language model (llama.cpp).",
+          "type": "string"
+        },
+        {
+          "const": "asr",
+          "description": "Speech recognition.",
+          "type": "string"
+        },
+        {
+          "const": "tts",
+          "description": "Text-to-speech (Piper).",
+          "type": "string"
+        },
+        {
+          "const": "embed",
+          "description": "Embeddings (memory retrieval).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Worker kind added by a newer hub.",
+          "type": "string"
+        }
+      ]
+    },
+    "WorkerState": {
+      "description": "Worker lifecycle state (PLAN Phase 2.3 supervisor states).",
+      "oneOf": [
+        {
+          "const": "starting",
+          "description": "Spawned, loading its model.",
+          "type": "string"
+        },
+        {
+          "const": "ready",
+          "description": "Serving normally.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Serving with reduced capability (fallback active).",
+          "type": "string"
+        },
+        {
+          "const": "down",
+          "description": "Not serving; supervisor is backing off before restart.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /system/health` — worker states, loaded models, rolling latencies\n(SPEC §5.A, D-3.3).",
+  "properties": {
+    "latencies": {
+      "description": "Rolling p50/p95 per latency class (D-3.3).",
+      "items": {
+        "$ref": "#/$defs/LatencyStat"
+      },
+      "type": "array"
+    },
+    "started_at": {
+      "description": "Hub start time.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "version": {
+      "description": "Hub semantic version (`CARGO_PKG_VERSION`).",
+      "type": "string"
+    },
+    "workers": {
+      "description": "One entry per supervised worker.",
+      "items": {
+        "$ref": "#/$defs/WorkerHealth"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "started_at",
+    "workers",
+    "latencies"
+  ],
+  "title": "HealthResponse",
+  "type": "object"
+}

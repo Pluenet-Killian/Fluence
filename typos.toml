@@ -2,6 +2,17 @@
 # La prose française (documents, configs commentées en FR) est exclue : le
 # dictionnaire de typos est anglais et produirait des faux positifs massifs.
 
+[default]
+# Citations françaises dans la doc de code (guillemets français) : le
+# produit est FR-first, les exemples de données utilisateur restent en
+# français réaliste.
+extend-ignore-re = ["«[^»]*»"]
+
+[default.extend-words]
+# Mots français des chaînes d'exemple/test qui ressemblent à des typos
+# anglaises. S'allonge au besoin — on ne traduit pas des données réalistes.
+fille = "fille"
+
 [files]
 extend-exclude = [
     "*.md",

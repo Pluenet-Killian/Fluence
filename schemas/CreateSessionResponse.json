@@ -1,0 +1,21 @@
+{
+  "$defs": {
+    "SessionId": {
+      "description": "A conversation session with a warm KV-cache hub-side (SPEC §5.A).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /sessions` response.",
+  "properties": {
+    "session_id": {
+      "$ref": "#/$defs/SessionId",
+      "description": "Newly created session."
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "CreateSessionResponse",
+  "type": "object"
+}

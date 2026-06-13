@@ -4,7 +4,9 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**"] },
+  // generated/: produced by `cargo xtask check-contracts`, drift-checked in
+  // CI — lint style does not apply to generated code (tsc still covers it).
+  { ignores: ["**/dist/**", "**/node_modules/**", "**/generated/**"] },
   {
     files: [
       "packages/*/src/**/*.ts",

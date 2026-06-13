@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "MemoryItemId": {
+      "description": "A personal memory item (SPEC §5.B).",
+      "type": "string"
+    },
+    "MemoryKind": {
+      "description": "Kind of memory item (SPEC §5.B data model).",
+      "oneOf": [
+        {
+          "const": "person",
+          "description": "A person (« Marie, ma fille — vient le mardi »).",
+          "type": "string"
+        },
+        {
+          "const": "place",
+          "description": "A place.",
+          "type": "string"
+        },
+        {
+          "const": "routine",
+          "description": "A recurring routine.",
+          "type": "string"
+        },
+        {
+          "const": "anecdote",
+          "description": "A dated anecdote.",
+          "type": "string"
+        },
+        {
+          "const": "phrase",
+          "description": "A recurring phrase — also a zero-latency suggestion cache (§5.B).",
+          "type": "string"
+        },
+        {
+          "const": "fact",
+          "description": "A standalone fact.",
+          "type": "string"
+        },
+        {
+          "const": "conversation_summary",
+          "description": "A summary persisted after raw-conversation purge (30 days).",
+          "type": "string"
+        }
+      ]
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "PendingMemoryItem": {
+      "description": "A candidate item in the validation queue.",
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Extraction confidence."
+        },
+        "content": {
+          "description": "Proposed content. **P0.**",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/MemoryItemId",
+          "description": "Queue id (used in `POST /memory/pending/{id}/accept|reject`)."
+        },
+        "kind": {
+          "$ref": "#/$defs/MemoryKind",
+          "description": "Proposed kind."
+        },
+        "proposed_at": {
+          "description": "When the extraction job proposed it.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why it was proposed (« phrase répétée 3× cette semaine »). Shown to\nthe user; stored encrypted like everything else. **P0.**",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Proposed tags.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "content",
+        "reason",
+        "confidence",
+        "proposed_at"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /memory/pending` response — the validation queue (SPEC §5.B):\ncandidates extracted after conversations, awaiting accept/reject.",
+  "properties": {
+    "items": {
+      "description": "Candidates awaiting user decision.",
+      "items": {
+        "$ref": "#/$defs/PendingMemoryItem"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "PendingResponse",
+  "type": "object"
+}

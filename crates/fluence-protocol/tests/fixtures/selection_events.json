@@ -1,0 +1,7 @@
+[
+  { "k": "sel.focus", "target": "key_e", "t": 123456789 },
+  { "k": "sel.dwell", "target": "key_e", "progress": 0.62, "eta_ms": 140 },
+  { "k": "sel.commit", "target": "key_e", "method": "dwell", "t": 123456999 },
+  { "k": "sel.cancel" },
+  { "k": "scan.highlight", "group": "row:2" }
+]

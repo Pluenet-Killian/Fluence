@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /pair/info` — what a pairing screen needs to display (no token).",
+  "properties": {
+    "api_version": {
+      "description": "API version served by this hub.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ca_fingerprint": {
+      "description": "Local CA fingerprint to compare on the pairing screen (TOFU path).",
+      "type": "string"
+    },
+    "household_name": {
+      "description": "Household name announced over mDNS (§2.A).",
+      "type": "string"
+    },
+    "pairing_open": {
+      "description": "Whether a pairing window is currently open.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "api_version",
+    "household_name",
+    "ca_fingerprint",
+    "pairing_open"
+  ],
+  "title": "PairInfo",
+  "type": "object"
+}

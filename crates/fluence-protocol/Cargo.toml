@@ -10,3 +10,14 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "clock"] }
+schemars = { version = "1.2.1", features = ["chrono04"] }
+serde = { version = "1.0.228", features = ["derive"] }
+# float_roundtrip : le round-trip f64 doit être exact au bit près — le
+# replay des traces d'entrée (T4) et le déterminisme d'éval en dépendent.
+serde_json = { version = "1.0.150", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+proptest = "1.11.0"

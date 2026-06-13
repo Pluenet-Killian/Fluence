@@ -1,0 +1,52 @@
+{
+  "$defs": {
+    "Scope": {
+      "description": "Access scope of a device token (SPEC §2.A scope table).",
+      "oneOf": [
+        {
+          "const": "display",
+          "description": "Text to display, speech state — read only (partner-facing screen).",
+          "type": "string"
+        },
+        {
+          "const": "control",
+          "description": "Full composer, suggestions, TTS, input (the user's devices).",
+          "type": "string"
+        },
+        {
+          "const": "care",
+          "description": "Configuration, memory per ACL, diagnostics (caregiver).",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "Everything (embedded UI and local CLI only).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /pair` response: everything the device needs to talk to the hub.",
+  "properties": {
+    "ca_cert": {
+      "description": "Local CA certificate (PEM) for TLS pinning (home mode, §2.A).",
+      "type": "string"
+    },
+    "device_token": {
+      "description": "Per-device revocable token (header `X-Fluence-Token`).",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/Scope",
+      "description": "Scope granted by this pairing window."
+    }
+  },
+  "required": [
+    "ca_cert",
+    "device_token",
+    "scope"
+  ],
+  "title": "PairResponse",
+  "type": "object"
+}

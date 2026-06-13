@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "CommitMethod": {
+      "description": "How a selection was committed.\n\nUnknown methods deserialize as [`CommitMethod::Unknown`] (forward\ncompatibility — clients ignore what they don't know).",
+      "oneOf": [
+        {
+          "const": "dwell",
+          "description": "Dwell timer completed on a fixation.",
+          "type": "string"
+        },
+        {
+          "const": "switch",
+          "description": "Validated by a physical switch.",
+          "type": "string"
+        },
+        {
+          "const": "scan",
+          "description": "Selected via scanning.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Method added by a newer hub.",
+          "type": "string"
+        }
+      ]
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "TargetId": {
+      "description": "A selectable target declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "TimestampMicros": {
+      "description": "Microseconds since an arbitrary epoch, monotonic **per source**\n(SPEC §4.A).\n\nMonotonicity is a stream property the hub enforces at ingestion; the type\nitself only carries the value.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Hub → UI selection events on the `input` topic (SPEC §4.A).\n\nBudget: a committed selection reaches the UI < 20 ms after the decision.\n\nMarked `non_exhaustive`: event enums grow over time; clients must\ntolerate (ignore) unknown events rather than fail.",
+  "oneOf": [
+    {
+      "description": "The selection engine's focus entered a target.",
+      "properties": {
+        "k": {
+          "const": "sel.focus",
+          "type": "string"
+        },
+        "t": {
+          "$ref": "#/$defs/TimestampMicros",
+          "description": "Decision timestamp."
+        },
+        "target": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Focused target."
+        }
+      },
+      "required": [
+        "k",
+        "target",
+        "t"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Dwell progress on the focused target (drives the UI gauge).",
+      "properties": {
+        "eta_ms": {
+          "description": "Estimated remaining time to commit, milliseconds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "k": {
+          "const": "sel.dwell",
+          "type": "string"
+        },
+        "progress": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Progress in `[0, 1]`."
+        },
+        "target": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Target being dwelled on."
+        }
+      },
+      "required": [
+        "k",
+        "target",
+        "progress",
+        "eta_ms"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "A selection was committed.",
+      "properties": {
+        "k": {
+          "const": "sel.commit",
+          "type": "string"
+        },
+        "method": {
+          "$ref": "#/$defs/CommitMethod",
+          "description": "How it was committed."
+        },
+        "t": {
+          "$ref": "#/$defs/TimestampMicros",
+          "description": "Decision timestamp."
+        },
+        "target": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Committed target."
+        }
+      },
+      "required": [
+        "k",
+        "target",
+        "method",
+        "t"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Focus/dwell was cancelled (target left, signal lost…).",
+      "properties": {
+        "k": {
+          "const": "sel.cancel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "k"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Scanning highlight moved to a group (SPEC §4.A).",
+      "properties": {
+        "group": {
+          "description": "Highlighted group, by convention `row:<n>` / `col:<n>` / target id.",
+          "type": "string"
+        },
+        "k": {
+          "const": "scan.highlight",
+          "type": "string"
+        }
+      },
+      "required": [
+        "k",
+        "group"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SelectionEvent"
+}

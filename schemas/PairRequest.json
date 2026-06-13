@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "DeviceKind": {
+      "description": "Kind of device requesting pairing — drives naming and display in the\ncaregiver space. Unknown kinds are tolerated.",
+      "oneOf": [
+        {
+          "const": "desktop",
+          "description": "Desktop or laptop computer.",
+          "type": "string"
+        },
+        {
+          "const": "tablet",
+          "description": "Tablet.",
+          "type": "string"
+        },
+        {
+          "const": "phone",
+          "description": "Phone.",
+          "type": "string"
+        },
+        {
+          "const": "display",
+          "description": "Dedicated partner-facing display.",
+          "type": "string"
+        },
+        {
+          "const": "cli",
+          "description": "Command-line tool.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Kind added by a newer client.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /pair` request (no token; only valid while the window is open).",
+  "properties": {
+    "code": {
+      "description": "8-digit single-use code shown on the main screen.",
+      "type": "string"
+    },
+    "device_kind": {
+      "$ref": "#/$defs/DeviceKind",
+      "description": "What kind of device this is."
+    },
+    "device_name": {
+      "description": "Human name for the device (« Tablette du lit »).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "device_name",
+    "device_kind"
+  ],
+  "title": "PairRequest",
+  "type": "object"
+}

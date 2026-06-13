@@ -1,0 +1,370 @@
+{
+  "$defs": {
+    "CommitMethod": {
+      "description": "How a selection was committed.\n\nUnknown methods deserialize as [`CommitMethod::Unknown`] (forward\ncompatibility — clients ignore what they don't know).",
+      "oneOf": [
+        {
+          "const": "dwell",
+          "description": "Dwell timer completed on a fixation.",
+          "type": "string"
+        },
+        {
+          "const": "switch",
+          "description": "Validated by a physical switch.",
+          "type": "string"
+        },
+        {
+          "const": "scan",
+          "description": "Selected via scanning.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Method added by a newer hub.",
+          "type": "string"
+        }
+      ]
+    },
+    "Normalized": {
+      "description": "A float in `[0.0, 1.0]` — coordinates, confidences, probabilities,\ndwell progress (SPEC §4.A).\n\nConstruction and deserialization validate the bounds and reject\nnon-finite values, so a `Normalized` is always a trustworthy number.\n\n```\nuse fluence_protocol::Normalized;\nassert!(Normalized::new(0.5).is_ok());\nassert!(Normalized::new(1.2).is_err());\nassert!(Normalized::new(f64::NAN).is_err());\n```",
+      "format": "double",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "SelectionEvent": {
+      "description": "Hub → UI selection events on the `input` topic (SPEC §4.A).\n\nBudget: a committed selection reaches the UI < 20 ms after the decision.\n\nMarked `non_exhaustive`: event enums grow over time; clients must\ntolerate (ignore) unknown events rather than fail.",
+      "oneOf": [
+        {
+          "description": "The selection engine's focus entered a target.",
+          "properties": {
+            "k": {
+              "const": "sel.focus",
+              "type": "string"
+            },
+            "t": {
+              "$ref": "#/$defs/TimestampMicros",
+              "description": "Decision timestamp."
+            },
+            "target": {
+              "$ref": "#/$defs/TargetId",
+              "description": "Focused target."
+            }
+          },
+          "required": [
+            "k",
+            "target",
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Dwell progress on the focused target (drives the UI gauge).",
+          "properties": {
+            "eta_ms": {
+              "description": "Estimated remaining time to commit, milliseconds.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "k": {
+              "const": "sel.dwell",
+              "type": "string"
+            },
+            "progress": {
+              "$ref": "#/$defs/Normalized",
+              "description": "Progress in `[0, 1]`."
+            },
+            "target": {
+              "$ref": "#/$defs/TargetId",
+              "description": "Target being dwelled on."
+            }
+          },
+          "required": [
+            "k",
+            "target",
+            "progress",
+            "eta_ms"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A selection was committed.",
+          "properties": {
+            "k": {
+              "const": "sel.commit",
+              "type": "string"
+            },
+            "method": {
+              "$ref": "#/$defs/CommitMethod",
+              "description": "How it was committed."
+            },
+            "t": {
+              "$ref": "#/$defs/TimestampMicros",
+              "description": "Decision timestamp."
+            },
+            "target": {
+              "$ref": "#/$defs/TargetId",
+              "description": "Committed target."
+            }
+          },
+          "required": [
+            "k",
+            "target",
+            "method",
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Focus/dwell was cancelled (target left, signal lost…).",
+          "properties": {
+            "k": {
+              "const": "sel.cancel",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Scanning highlight moved to a group (SPEC §4.A).",
+          "properties": {
+            "group": {
+              "description": "Highlighted group, by convention `row:<n>` / `col:<n>` / target id.",
+              "type": "string"
+            },
+            "k": {
+              "const": "scan.highlight",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k",
+            "group"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SystemEvent": {
+      "description": "Hub → clients events on the `system` topic.",
+      "oneOf": [
+        {
+          "description": "First frame after a WebSocket open: negotiation outcome\n(see [`crate::ws`] for the connection contract).",
+          "properties": {
+            "k": {
+              "const": "system.hello",
+              "type": "string"
+            },
+            "topics": {
+              "description": "Topics actually granted (requested ∩ allowed by scope).",
+              "items": {
+                "$ref": "#/$defs/Topic"
+              },
+              "type": "array"
+            },
+            "v": {
+              "description": "Protocol version retained by the hub.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "k",
+            "v",
+            "topics"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A worker changed state — the explicit degradation chain of\n« le clavier parle toujours » (SPEC §2.C, D-2.6).",
+          "properties": {
+            "k": {
+              "const": "system.degraded",
+              "type": "string"
+            },
+            "restart_count": {
+              "description": "Restarts since hub boot (present when the supervisor restarts it).",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "state": {
+              "$ref": "#/$defs/WorkerState",
+              "description": "Its new state."
+            },
+            "worker": {
+              "$ref": "#/$defs/WorkerKind",
+              "description": "Which worker."
+            }
+          },
+          "required": [
+            "k",
+            "worker",
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "ASR listening state changed. Every UI must show a visible indicator\nwhile listening is on (SPEC §5.A — third-party privacy).",
+          "properties": {
+            "enabled": {
+              "description": "Whether the microphone pipeline is active.",
+              "type": "boolean"
+            },
+            "k": {
+              "const": "system.listening",
+              "type": "string"
+            }
+          },
+          "required": [
+            "k",
+            "enabled"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TargetId": {
+      "description": "A selectable target declared by a UI (SPEC §4.A).",
+      "type": "string"
+    },
+    "TimestampMicros": {
+      "description": "Microseconds since an arbitrary epoch, monotonic **per source**\n(SPEC §4.A).\n\nMonotonicity is a stream property the hub enforces at ingestion; the type\nitself only carries the value.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "Topic": {
+      "description": "A multiplexing topic (SPEC §2.A). Subscription is filtered by scope:\n`display` receives `system` + composed text; `control` adds `input`…",
+      "oneOf": [
+        {
+          "const": "input",
+          "description": "Input protocol: samples in, selection events out (SPEC §4.A).",
+          "type": "string"
+        },
+        {
+          "const": "asr",
+          "description": "Partner speech transcription (P2 — reserved, no frames in v1).",
+          "type": "string"
+        },
+        {
+          "const": "suggest",
+          "description": "Push suggestions (P2 — reserved, no frames in v1).",
+          "type": "string"
+        },
+        {
+          "const": "voice",
+          "description": "Voice/TTS events (P2 — reserved, no frames in v1).",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "System state: degradations, listening indicator, hello (SPEC §2.C).",
+          "type": "string"
+        }
+      ]
+    },
+    "WorkerKind": {
+      "description": "An inference worker supervised by the hub (SPEC §2.C).\n\nUnknown kinds deserialize as [`WorkerKind::Unknown`] (forward\ncompatibility).",
+      "oneOf": [
+        {
+          "const": "llm",
+          "description": "Language model (llama.cpp).",
+          "type": "string"
+        },
+        {
+          "const": "asr",
+          "description": "Speech recognition.",
+          "type": "string"
+        },
+        {
+          "const": "tts",
+          "description": "Text-to-speech (Piper).",
+          "type": "string"
+        },
+        {
+          "const": "embed",
+          "description": "Embeddings (memory retrieval).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Worker kind added by a newer hub.",
+          "type": "string"
+        }
+      ]
+    },
+    "WorkerState": {
+      "description": "Worker lifecycle state (PLAN Phase 2.3 supervisor states).",
+      "oneOf": [
+        {
+          "const": "starting",
+          "description": "Spawned, loading its model.",
+          "type": "string"
+        },
+        {
+          "const": "ready",
+          "description": "Serving normally.",
+          "type": "string"
+        },
+        {
+          "const": "degraded",
+          "description": "Serving with reduced capability (fallback active).",
+          "type": "string"
+        },
+        {
+          "const": "down",
+          "description": "Not serving; supervisor is backing off before restart.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Hub → client frame.\n\nMarked `non_exhaustive`: new topics gain payloads over time (P2);\nclients must ignore frames whose topic they do not handle.",
+  "oneOf": [
+    {
+      "description": "Selection engine event.",
+      "properties": {
+        "msg": {
+          "$ref": "#/$defs/SelectionEvent"
+        },
+        "topic": {
+          "const": "input",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "msg"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "System state event.",
+      "properties": {
+        "msg": {
+          "$ref": "#/$defs/SystemEvent"
+        },
+        "topic": {
+          "const": "system",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic",
+        "msg"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ServerFrame"
+}

@@ -1,0 +1,14 @@
+[
+  { "event": "delta", "data": { "i": 0, "text": "Je voudrais de l'eau" } },
+  {
+    "event": "final",
+    "data": {
+      "suggestions": [
+        { "text": "Je voudrais de l'eau fraîche ce soir.", "score": 0.92 },
+        { "text": "De l'eau fraîche ce soir, s'il te plaît.", "score": 0.81, "origin": "model" },
+        { "text": "Tu peux m'apporter de l'eau fraîche ?", "score": 0.74, "origin": "memory" }
+      ]
+    }
+  },
+  { "event": "aborted", "data": { "reason": "superseded" } }
+]

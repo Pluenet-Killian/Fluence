@@ -1,0 +1,94 @@
+{
+  "$defs": {
+    "MemoryAcl": {
+      "description": "Who may see/edit an item (SPEC §5.B). The caregiver space **never**\nsees `private` items, even as admin.",
+      "oneOf": [
+        {
+          "const": "private",
+          "description": "Visible to the user only (the default — intimacy first).",
+          "type": "string"
+        },
+        {
+          "const": "care_visible",
+          "description": "Caregivers may see it.",
+          "type": "string"
+        },
+        {
+          "const": "care_editable",
+          "description": "Caregivers may see and edit it.",
+          "type": "string"
+        }
+      ]
+    },
+    "MemoryKind": {
+      "description": "Kind of memory item (SPEC §5.B data model).",
+      "oneOf": [
+        {
+          "const": "person",
+          "description": "A person (« Marie, ma fille — vient le mardi »).",
+          "type": "string"
+        },
+        {
+          "const": "place",
+          "description": "A place.",
+          "type": "string"
+        },
+        {
+          "const": "routine",
+          "description": "A recurring routine.",
+          "type": "string"
+        },
+        {
+          "const": "anecdote",
+          "description": "A dated anecdote.",
+          "type": "string"
+        },
+        {
+          "const": "phrase",
+          "description": "A recurring phrase — also a zero-latency suggestion cache (§5.B).",
+          "type": "string"
+        },
+        {
+          "const": "fact",
+          "description": "A standalone fact.",
+          "type": "string"
+        },
+        {
+          "const": "conversation_summary",
+          "description": "A summary persisted after raw-conversation purge (30 days).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /memory/items` request.",
+  "properties": {
+    "acl": {
+      "$ref": "#/$defs/MemoryAcl",
+      "default": "private",
+      "description": "Access control (default `private`)."
+    },
+    "content": {
+      "description": "The content to remember. **P0.**",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/MemoryKind",
+      "description": "Item kind."
+    },
+    "tags": {
+      "description": "Free-form tags.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "content"
+  ],
+  "title": "CreateMemoryItem",
+  "type": "object"
+}

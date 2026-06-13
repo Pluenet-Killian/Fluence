@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /asr/consent` — obtain a consent token via an explicit UI action.\nThe action is journaled locally (who, when, which device).",
+  "properties": {
+    "consent_token": {
+      "description": "Token to pass to `POST /asr/listening`.",
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "When this token stops being accepted.",
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "consent_token",
+    "expires_at"
+  ],
+  "title": "ConsentResponse",
+  "type": "object"
+}

@@ -1,0 +1,19 @@
+# Lint OpenAPI (T3) — règles standard OAS.
+extends: ["spectral:oas"]
+rules:
+  # Les summaries tiennent lieu de descriptions courtes ; les descriptions
+  # riches arrivent avec la doc publiée (critère « Done quand » Phase 1).
+  operation-description: off
+overrides:
+  # GET /ws répond 101 Switching Protocols (upgrade WebSocket) — il n'a pas
+  # de réponse 2xx/3xx par nature.
+  - files: ["schemas/openapi.json#/paths/~1ws/get"]
+    rules:
+      operation-success-response: off
+  # Les frames WebSocket ne sont référencées par aucun body HTTP : elles
+  # documentent le canal temps réel (SPEC §2.A), pas une route.
+  - files:
+      - "schemas/openapi.json#/components/schemas/ClientFrame"
+      - "schemas/openapi.json#/components/schemas/ServerFrame"
+    rules:
+      oas3-unused-component: off

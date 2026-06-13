@@ -30,11 +30,7 @@ fn repository_conforms_to_license_layout() {
 /// explicitly rather than silently passing.
 #[test]
 fn phase_gated_commands_fail_explicitly() {
-    for (command, phase) in [
-        ("check-contracts", "Phase 1"),
-        ("download-test-assets", "Phase 3"),
-        ("run-eval", "Phase 3"),
-    ] {
+    for (command, phase) in [("download-test-assets", "Phase 3"), ("run-eval", "Phase 3")] {
         let output = Command::new(env!("CARGO_BIN_EXE_xtask"))
             .arg(command)
             .output()

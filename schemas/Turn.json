@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "Speaker": {
+      "description": "Who produced a turn.",
+      "oneOf": [
+        {
+          "const": "user",
+          "description": "The Fluence user.",
+          "type": "string"
+        },
+        {
+          "const": "partner",
+          "description": "The conversation partner.",
+          "type": "string"
+        }
+      ]
+    },
+    "TurnSource": {
+      "description": "How a turn's text was produced.",
+      "oneOf": [
+        {
+          "const": "typed",
+          "description": "Typed in the composer.",
+          "type": "string"
+        },
+        {
+          "const": "asr",
+          "description": "Transcribed from the partner's speech (consented ASR, §5.A).",
+          "type": "string"
+        },
+        {
+          "const": "spoken",
+          "description": "Spoken through TTS by the user.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /sessions/{id}/turns` — one conversation turn (SPEC §5.A).",
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/TurnSource",
+      "description": "How the text was produced."
+    },
+    "speaker": {
+      "$ref": "#/$defs/Speaker",
+      "description": "Who produced this turn."
+    },
+    "text": {
+      "description": "Turn text. **P0 content** — never logged (SPEC §9.A).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "speaker",
+    "text",
+    "source"
+  ],
+  "title": "Turn",
+  "type": "object"
+}
