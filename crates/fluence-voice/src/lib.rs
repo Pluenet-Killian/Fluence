@@ -9,8 +9,8 @@
 //! available, so vocalising never depends on the neural TTS being up — the
 //! voice side of « le clavier parle toujours » (SPEC §2.C, D-2.6).
 //!
-//! Backends produce a complete WAV (16-bit mono PCM, [`wav`]) the hub streams
-//! as `audio/wav`. Opus/Ogg (bandwidth for LAN/home mode) is deferred to
+//! Backends produce a complete WAV (16-bit mono PCM, [`wav_from_pcm`]) the hub
+//! streams as `audio/wav`. Opus/Ogg (bandwidth for LAN/home mode) is deferred to
 //! Phase 7 (ADR-0009). The cloned voice is P0 intimate data: encrypted, never
 //! leaves the household (§9.A).
 

@@ -6,7 +6,7 @@
 //! backend (ADR-0007): no C++/CMake in our build, crash-isolated by the process
 //! boundary, portable Windows/Linux. Each `synthesize` spawns `piper`, writes
 //! the text to its stdin, and reads the raw 16-bit mono PCM from its stdout
-//! (`--output_raw`), which [`crate::wav`] wraps into a WAV.
+//! (`--output_raw`), which [`crate::wav_from_pcm`] wraps into a WAV.
 
 use std::io::Write;
 use std::path::PathBuf;
