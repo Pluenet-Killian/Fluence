@@ -2,17 +2,19 @@
 
 //! `fluencectl` — command-line client for the Fluence hub (PLAN 2.6).
 //!
-//! v0 surface: `health`, `pair-window`, `pair`, `watch`, `journal`. It is a
-//! client of the public hub API like any other (D-2.1): no privileged
+//! v0 surface: `health`, `pair-window`, `pair`, `watch`, `journal`, `suggest`.
+//! It is a client of the public hub API like any other (D-2.1): no privileged
 //! access, only the local token files written by the hub.
 
 mod discovery;
 
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use fluence_protocol::api::pair::{PairResponse, Scope};
+use fluence_protocol::api::suggest::{SuggestFinal, SuggestionOrigin};
 use fluence_protocol::api::system::{AccessJournalResponse, CapabilitiesResponse, HealthResponse};
 
 use discovery::Connection;
@@ -65,6 +67,17 @@ enum Command {
         #[arg(long, default_value_t = 20)]
         limit: u32,
     },
+    /// Rephrase or continue a draft through the acceleration engine (§5.A).
+    Suggest {
+        /// The draft text to act on (P0 — stays on the loopback to the hub).
+        draft: String,
+        /// Which acceleration function to run.
+        #[arg(long, value_enum, default_value = "rephrase")]
+        mode: ModeArg,
+        /// How many suggestions to request (UI guidance: ≤ 3, SPEC §7.A).
+        #[arg(long, default_value_t = 3)]
+        n: u8,
+    },
 }
 
 /// CLI mirror of [`Scope`] (clap value enum).
@@ -87,6 +100,24 @@ impl From<ScopeArg> for Scope {
     }
 }
 
+/// CLI mirror of the implemented [`SuggestMode`](fluence_protocol::api::suggest::SuggestMode)s
+/// (v0: rephrase, continue — replies/expand are P2).
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum ModeArg {
+    Rephrase,
+    Continue,
+}
+
+impl ModeArg {
+    /// The wire value the hub expects (`SuggestMode`, lowercase).
+    fn wire(self) -> &'static str {
+        match self {
+            ModeArg::Rephrase => "rephrase",
+            ModeArg::Continue => "continue",
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let data_dir = cli
@@ -100,6 +131,7 @@ fn main() -> ExitCode {
         Command::Pair { code, name } => run_pair(&cli, &data_dir, code, name),
         Command::Watch { topics } => run_watch(&cli, &data_dir, topics),
         Command::Journal { limit } => run_journal(&cli, &data_dir, *limit),
+        Command::Suggest { draft, mode, n } => run_suggest(&cli, &data_dir, draft, *mode, *n),
     };
 
     match result {
@@ -255,4 +287,61 @@ fn run_journal(cli: &Cli, data_dir: &std::path::Path, limit: u32) -> Result<(), 
         println!("{}  {:24}  {device}  {detail}", entry.at, entry.action);
     }
     Ok(())
+}
+
+fn run_suggest(
+    cli: &Cli,
+    data_dir: &std::path::Path,
+    draft: &str,
+    mode: ModeArg,
+    n: u8,
+) -> Result<(), String> {
+    let conn = connect(cli, data_dir)?;
+    let token = conn.token.as_deref().unwrap_or_default();
+    let body = serde_json::json!({ "mode": mode.wire(), "draft": draft, "n": n, "slot": "main" });
+    // The hub answers with an SSE stream (deltas then a final list). For a
+    // one-shot CLI we read it whole, then print the post-processed final.
+    let mut raw = String::new();
+    ureq::post(format!("{}/api/v1/sessions/cli/suggest", conn.url))
+        .header("X-Fluence-Token", token)
+        .send_json(body)
+        .map_err(|e| format!("suggest failed: {e}"))?
+        .into_body()
+        .into_reader()
+        .read_to_string(&mut raw)
+        .map_err(|e| format!("reading suggestions failed: {e}"))?;
+
+    let final_data = final_event_data(&raw).ok_or("no final event in the stream")?;
+    let parsed: SuggestFinal =
+        serde_json::from_str(&final_data).map_err(|e| format!("invalid final event: {e}"))?;
+    if parsed.suggestions.is_empty() {
+        println!("(no suggestion — the model is unavailable and the fallback had nothing)");
+        return Ok(());
+    }
+    for (index, suggestion) in parsed.suggestions.iter().enumerate() {
+        let origin = match suggestion.origin {
+            Some(SuggestionOrigin::Model) => "model",
+            Some(SuggestionOrigin::Ngram) => "n-gram",
+            Some(SuggestionOrigin::Memory) => "memory",
+            _ => "?",
+        };
+        println!("{}. {}  [{origin}]", index + 1, suggestion.text);
+    }
+    Ok(())
+}
+
+/// Extracts the `data:` payload of the SSE `final` frame, if present.
+fn final_event_data(body: &str) -> Option<String> {
+    body.split("\n\n").find_map(|frame| {
+        let is_final = frame
+            .lines()
+            .any(|line| line.strip_prefix("event:").map(str::trim) == Some("final"));
+        if !is_final {
+            return None;
+        }
+        frame
+            .lines()
+            .find_map(|line| line.strip_prefix("data:"))
+            .map(|data| data.trim().to_owned())
+    })
 }

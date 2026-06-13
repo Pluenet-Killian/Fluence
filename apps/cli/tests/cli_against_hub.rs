@@ -90,6 +90,59 @@ async fn pairing_window_pair_and_journal_round_trip() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn suggest_degrades_gracefully_without_a_model() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // No llama-server configured → the engine is unavailable; suggest must
+    // still succeed by degrading to the (empty) n-gram fallback — never error
+    // (D-2.6). The model-origin rendering is covered hub-side.
+    let hub = test_hub(dir.path()).await;
+    let data_dir = dir.path().to_string_lossy().into_owned();
+    let url = format!("http://127.0.0.1:{}", hub.addr.port());
+
+    // Pair a control device — /suggest requires the control scope.
+    let (ok, out) = fluencectl(&["--data-dir", &data_dir, "pair-window", "--scope", "control"]);
+    assert!(ok, "pair-window failed: {out}");
+    let code = out
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("code: "))
+        .expect("a code line")
+        .to_owned();
+    let device_dir = tempfile::tempdir().expect("device dir");
+    let device_data = device_dir.path().to_string_lossy().into_owned();
+    let (ok, out) = fluencectl(&[
+        "--data-dir",
+        &device_data,
+        "--url",
+        &url,
+        "pair",
+        "--code",
+        &code,
+    ]);
+    assert!(ok, "pair failed: {out}");
+
+    let (ok, out) = fluencectl(&[
+        "--data-dir",
+        &device_data,
+        "--url",
+        &url,
+        "suggest",
+        "veu eau frache",
+        "--mode",
+        "rephrase",
+    ]);
+    assert!(
+        ok,
+        "suggest must succeed even when the model is down: {out}"
+    );
+    assert!(
+        out.contains("no suggestion"),
+        "expected a graceful empty result with no model, got: {out}"
+    );
+
+    hub.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pair_rejects_a_wrong_code() {
     let dir = tempfile::tempdir().expect("tempdir");
     let hub = test_hub(dir.path()).await;
