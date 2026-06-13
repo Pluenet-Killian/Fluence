@@ -11,11 +11,13 @@ Phase 3 (PLAN task 3.1) lands the versioned corpus format; the corpus v0
 itself (task 3.4) and the variant generators build on it.
 """
 
+from fluence_data.antipathos import PATHOS_MARKERS, is_pathos_free, pathos_findings
 from fluence_data.azerty import (
     confusion_distribution,
     neighbours,
     sample_keypress,
 )
+from fluence_data.corpus_v0 import build_corpus_v0
 from fluence_data.formats import (
     SCHEMA_VERSION,
     Dialogue,
@@ -30,8 +32,10 @@ from fluence_data.formats import (
     load_jsonl,
     split_of,
 )
+from fluence_data.variants import abbreviated, noised, telegraphic
 
 __all__ = [
+    "PATHOS_MARKERS",
     "SCHEMA_VERSION",
     "Dialogue",
     "InputVariant",
@@ -41,10 +45,16 @@ __all__ = [
     "Split",
     "Turn",
     "VariantKind",
+    "abbreviated",
+    "build_corpus_v0",
     "confusion_distribution",
     "dump_jsonl",
+    "is_pathos_free",
     "load_jsonl",
     "neighbours",
+    "noised",
+    "pathos_findings",
     "sample_keypress",
     "split_of",
+    "telegraphic",
 ]
