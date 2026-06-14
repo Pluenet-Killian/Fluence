@@ -5,7 +5,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
-## Phase 5 — La boucle complète (intégrée sur `main` — 2026-06-14)
+## Phase 5 — La boucle complète (terminée — 2026-06-14, `phase-5-done`)
 
 ### Ajouté
 
@@ -35,26 +35,47 @@ définis en SPEC D-12.2).
   (`ServeDir`, `FLUENCE_WEB_DIR`).
 - **Instrumentation locale** (5.5) : WPM effectif et économie de frappe réels,
   calculés côté client et affichés (« mon premier WPM réel », SPEC §1.2).
+- **Suite e2e T5 « personas »** (`apps/e2e`, Playwright, AGPL — #43) : le vrai
+  composeur contre le **hub assemblé** qui le sert, hermétique (n-gram fallback +
+  voix OS, sans modèle lourd). Harnais qui lance le binaire hub, l'appaire par le
+  vrai flux, et le crashe/relance. 4 scénarios (dwell+PARLER+autosave, suggestion
+  acceptée, urgence reçue par un 2ᵉ client, hub tué→reconnexion+draft intact),
+  **verts Win+Linux** (`integration.yml` job `e2e`). Démo reproductible filmée
+  (`pnpm --filter @fluence/e2e demo`, Piper FR) + `docs/demos/phase5-loop.md`.
+
+### Corrigé
+
+- **`voice` — voix OS Windows silencieuse** (#43) : `POST /voice/speak` renvoyait
+  `200 audio/wav` de **0 octet** (SAPI n'écrit rien quand le chemin est tenu
+  ouvert par un `NamedTempFile`) → « une voix, toujours » violée. Répertoire temp
+  + chemin interne ; test RIFF non vide.
+- **`web-client` — dwell non semé** (#43) : course `PUT /input/targets` vs
+  ouverture `/ws` pouvait laisser le moteur de sélection **vide** (dwell mort).
+  Le composeur sème le moteur vivant via un `targets.patch` sur la socket à
+  l'ouverture ; helper pur + test de régression hub `ws`.
 
 ### Vérifié
 
-- Rust : clippy + fmt + tests (input wiring, voice handlers + 13 tests
-  `fluence-voice` + smoke live Piper, urgence), `check-contracts` + spectral 0.
-- TS : SDK 18 tests ; web-client typecheck + eslint strict + 10 tests vitest +
-  build Vite. `cargo-deny` (nouvelles deps tower-http `fs`).
+- Rust : clippy + fmt + tests (input wiring, voice handlers + 14 tests
+  `fluence-voice` + smoke live Piper, urgence, **seeding `ws` par `targets.patch`**),
+  `check-contracts` + spectral 0, `doc -D warnings`.
+- TS : SDK 18 tests ; web-client typecheck + eslint strict + 11 tests vitest +
+  build Vite. **Suite e2e Playwright verte Win+Linux** (#43). `cargo-deny`.
 
 ### Intégré
 
 - Pile #32–#40 fusionnée sur `main` via **#41** (`c61ab06`) après résolution des
   conflits hub sur une branche d'intégration unique (contrats/`api.d.ts`
   régénérés, jamais fusionnés à la main). Tag **`phase-4-done`** posé.
+- Suite T5 + fixes de fiabilité via **#43** (`53838a1`). Tag **`phase-5-done`**.
 
 ### Reste (dette)
 
-- Suite **Playwright T5** (personas) dans `integration.yml` contre le hub
-  assemblé + démo filmée reproductible → tag `phase-5-done`. P0-scheduler D-3.3,
-  opus + streaming chunké (Phase 7), stockage chiffré des métriques (P2), fix de
-  génération TS de `InputClientMessage` (tag `k` perdu sur variantes newtype).
+- Rendre le job `e2e` un **check requis** de la protection de `main` (#43 a
+  fusionné pendant qu'il tournait — réussi mais non bloquant). P0-scheduler
+  D-3.3, opus + streaming chunké (Phase 7), stockage chiffré des métriques (P2),
+  fix de génération TS de `InputClientMessage` (tag `k` perdu sur variantes
+  newtype).
 
 ## Phase 4 — Le moteur : LLM réel (2026-06-13)
 
