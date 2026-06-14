@@ -17,6 +17,7 @@ pub mod api;
 pub mod auth;
 pub mod config;
 pub mod events;
+pub mod maintenance;
 pub mod state;
 pub mod supervisor;
 pub mod telemetry;
@@ -104,8 +105,7 @@ impl RunningHub {
 /// Panics if the freshly bound listener has no local address — an OS
 /// invariant violation that cannot occur in practice.
 pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
-    let store_path = config.data_dir.join("store.db");
-    let key = store_key_source(&config);
+    let (store_path, key) = store_paths(&config);
     warn_if_at_rest_degraded(&key, &store_path);
     let store = Store::open(StoreConfig {
         path: store_path,
@@ -194,6 +194,14 @@ pub async fn start(config: HubConfig) -> Result<RunningHub, HubError> {
         served,
         state,
     })
+}
+
+/// The store database path and key source for a config — the one place this
+/// resolution lives, shared by [`start`] and the maintenance subcommands so the
+/// hub and the offline tooling can never disagree on where the data is.
+#[must_use]
+pub fn store_paths(config: &HubConfig) -> (std::path::PathBuf, KeySource) {
+    (config.data_dir.join("store.db"), store_key_source(config))
 }
 
 /// Chooses where the store master key lives. An explicit `store_key_file`
