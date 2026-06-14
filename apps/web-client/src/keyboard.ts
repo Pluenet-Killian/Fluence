@@ -68,3 +68,41 @@ export function buildTargetMap(
     })),
   };
 }
+
+/**
+ * A `targets.patch` frame on the `input` WebSocket topic (contract
+ * `InputClientMessage::TargetsPatch`), built explicitly because contract-gen
+ * drops the `k` tag for newtype enum variants (the same quirk the pointer
+ * frame works around — tracked as debt).
+ */
+export interface TargetsPatchFrame {
+  topic: "input";
+  msg: {
+    k: "targets.patch";
+    surface: string;
+    viewport: { w: number; h: number };
+    upsert: TargetMap["targets"];
+    remove: string[];
+  };
+}
+
+/**
+ * Wraps a full [`TargetMap`] as an `input` `targets.patch` wire frame so a UI
+ * can seed a freshly opened `/ws` connection's selection engine directly, in
+ * order, over the same socket (PLAN 5.1). This sidesteps the race where a
+ * `PUT /input/targets` may land after the hub has already snapshotted targets
+ * for the new connection's engine — the engine that will hit-test this UI's
+ * pointer samples is then seeded deterministically by a frame on its own socket.
+ */
+export function targetsPatchFrame(map: TargetMap): TargetsPatchFrame {
+  return {
+    topic: "input",
+    msg: {
+      k: "targets.patch",
+      surface: map.surface,
+      viewport: map.viewport,
+      upsert: map.targets,
+      remove: [],
+    },
+  };
+}

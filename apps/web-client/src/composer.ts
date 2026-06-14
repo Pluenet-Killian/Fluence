@@ -12,13 +12,26 @@
  */
 
 import { FluenceClient } from "@fluence/sdk";
-import type { SelectionEvent, Suggestion, SuggestRequest, SystemEvent } from "@fluence/sdk";
+import type {
+  SelectionEvent,
+  Suggestion,
+  SuggestRequest,
+  SystemEvent,
+  TargetMap,
+} from "@fluence/sdk";
 
 import { SuggestionGate } from "./antiflicker.js";
 import { h } from "./dom.js";
 import { normalizePoint } from "./coords.js";
 import { t } from "./i18n.js";
-import { allKeys, BACKSPACE, buildTargetMap, KEY_ROWS, type MeasuredKey } from "./keyboard.js";
+import {
+  allKeys,
+  BACKSPACE,
+  buildTargetMap,
+  KEY_ROWS,
+  targetsPatchFrame,
+  type MeasuredKey,
+} from "./keyboard.js";
 import { UsageMeter } from "./metrics.js";
 
 const SURFACE = "main";
@@ -220,9 +233,29 @@ export class Composer {
   // ---- Targets ----
 
   #declareTargets(): void {
+    const map = this.#measureTargets();
+    if (map === null) {
+      return;
+    }
+    // REST declaration: shared surface state, seeds the engine of any *future*
+    // input connection from the hub's snapshot.
+    void this.#client.putTargets(map).catch((error: unknown) => {
+      console.warn("putTargets failed", error);
+    });
+    // WS declaration: seed *this* connection's live engine directly, in order,
+    // over its own socket — deterministic even if the PUT above is still in
+    // flight when the hub snapshots targets for this connection (PLAN 5.1).
+    if (this.#socketRaw !== null && this.#socketRaw.readyState === WebSocket.OPEN) {
+      this.#socketRaw.send(JSON.stringify(targetsPatchFrame(map)));
+    }
+  }
+
+  /** Measures the on-screen key rectangles into a hub target map, or `null`
+   * before the keyboard has been laid out. */
+  #measureTargets(): TargetMap | null {
     const surface = this.#keyEls.size > 0 ? this.#root.querySelector(".keyboard") : null;
     if (surface === null) {
-      return;
+      return null;
     }
     const base = surface.getBoundingClientRect();
     const keys: MeasuredKey[] = [];
@@ -239,14 +272,7 @@ export class Composer {
         rect: [rect.left - base.left, rect.top - base.top, rect.width, rect.height],
       });
     }
-    const map = buildTargetMap(
-      SURFACE,
-      { w: Math.round(base.width), h: Math.round(base.height) },
-      keys,
-    );
-    void this.#client.putTargets(map).catch((error: unknown) => {
-      console.warn("putTargets failed", error);
-    });
+    return buildTargetMap(SURFACE, { w: Math.round(base.width), h: Math.round(base.height) }, keys);
   }
 
   // ---- Socket ----

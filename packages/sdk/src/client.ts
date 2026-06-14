@@ -143,8 +143,8 @@ export class FluenceClient {
   // ---- Voice (SPEC §6) ----
 
   /**
-   * Vocalizes text. Returns the raw streamed-audio response
-   * (`audio/ogg; codecs=opus`) — the caller consumes `response.body`.
+   * Vocalizes text. Returns the raw audio response (`audio/wav` in v0 —
+   * ADR-0009; opus is deferred to Phase 7) — the caller consumes `response.body`.
    */
   async speak(request: SpeakRequest, signal?: AbortSignal): Promise<Response> {
     return this.#request("POST", "/api/v1/voice/speak", request, signal);
