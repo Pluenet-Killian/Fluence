@@ -417,6 +417,16 @@ pub fn routes() -> &'static [RouteSpec] {
             }],
         },
         RouteSpec {
+            method: Get,
+            path: "/api/v1/devices",
+            summary: "List paired devices (caregiver space; SPEC §7.C)",
+            auth: RouteAuth::Scoped(&[Care]),
+            stability: Stable,
+            request: None,
+            response: Json("DeviceList"),
+            query: &[],
+        },
+        RouteSpec {
             method: Delete,
             path: "/api/v1/devices/{id}",
             summary: "Revoke a paired device's token (caregiver space; SPEC §7.C)",

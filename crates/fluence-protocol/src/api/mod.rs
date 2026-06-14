@@ -4,6 +4,7 @@
 //! each module's documentation (PLAN task 1.3bis).
 
 pub mod asr;
+pub mod devices;
 pub mod memory;
 pub mod pair;
 pub mod profiles;

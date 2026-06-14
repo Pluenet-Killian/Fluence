@@ -52,6 +52,7 @@ macro_rules! for_each_root_type {
         $apply!(crate::api::system::CapabilitiesResponse);
         $apply!(crate::api::system::AccessJournalResponse);
         $apply!(crate::api::system::EmergencyRequest);
+        $apply!(crate::api::devices::DeviceList);
     };
 }
 

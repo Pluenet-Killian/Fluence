@@ -39,6 +39,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List paired devices (caregiver space; SPEC §7.C) */
+        get: operations["get_devices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/{id}": {
         parameters: {
             query?: never;
@@ -587,11 +604,38 @@ export interface components {
             /** @description Newly created session. */
             session_id: components["schemas"]["SessionId"];
         };
+        /** @description One paired device as the caregiver sees it. */
+        DeviceInfo: {
+            /**
+             * Format: date-time
+             * @description Pairing time.
+             */
+            created_at: string;
+            /** @description Stable device id (the handle for revocation). */
+            id: string;
+            /** @description Device kind. */
+            kind: components["schemas"]["DeviceKind"];
+            /** @description Human name chosen at pairing (« Tablette du lit »). */
+            name: string;
+            /**
+             * Format: date-time
+             * @description Revocation time, if revoked — a revoked device stays listed (greyed out),
+             *     it is not silently dropped, so the caregiver keeps a full picture.
+             */
+            revoked_at?: string | null;
+            /** @description Granted scope. */
+            scope: components["schemas"]["Scope"];
+        };
         /**
          * @description Kind of device requesting pairing — drives naming and display in the
          *     caregiver space. Unknown kinds are tolerated.
          */
         DeviceKind: "desktop" | "tablet" | "phone" | "display" | "cli" | "unknown";
+        /** @description `GET /devices` — every paired device, revoked included (caregiver space). */
+        DeviceList: {
+            /** @description Paired devices, oldest first. */
+            devices: components["schemas"]["DeviceInfo"][];
+        };
         /** @description `PUT /sessions/{id}/draft` — draft synchronization (SPEC §5.A). */
         Draft: {
             /**
@@ -1476,6 +1520,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error (RFC 9457) */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceList"];
+                };
             };
             /** @description Error (RFC 9457) */
             default: {
