@@ -71,11 +71,9 @@ définis en SPEC D-12.2).
 
 ### Reste (dette)
 
-- Rendre le job `e2e` un **check requis** de la protection de `main` (#43 a
-  fusionné pendant qu'il tournait — réussi mais non bloquant). P0-scheduler
-  D-3.3, opus + streaming chunké (Phase 7), stockage chiffré des métriques (P2),
-  fix de génération TS de `InputClientMessage` (tag `k` perdu sur variantes
-  newtype).
+- P0-scheduler D-3.3, opus + streaming chunké (Phase 7), stockage chiffré des
+  métriques (P2), fix de génération TS de `InputClientMessage` (tag `k` perdu sur
+  variantes newtype). *(Le job `e2e` est désormais un check requis de `main`.)*
 
 ## Phase 4 — Le moteur : LLM réel (2026-06-13)
 
