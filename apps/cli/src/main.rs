@@ -67,6 +67,11 @@ enum Command {
         #[arg(long, default_value_t = 20)]
         limit: u32,
     },
+    /// Revoke a paired device's token (caregiver; find ids in `journal`).
+    Revoke {
+        /// Device id to revoke.
+        device: String,
+    },
     /// Rephrase or continue a draft through the acceleration engine (§5.A).
     Suggest {
         /// The draft text to act on (P0 — stays on the loopback to the hub).
@@ -131,6 +136,7 @@ fn main() -> ExitCode {
         Command::Pair { code, name } => run_pair(&cli, &data_dir, code, name),
         Command::Watch { topics } => run_watch(&cli, &data_dir, topics),
         Command::Journal { limit } => run_journal(&cli, &data_dir, *limit),
+        Command::Revoke { device } => run_revoke(&cli, &data_dir, device),
         Command::Suggest { draft, mode, n } => run_suggest(&cli, &data_dir, draft, *mode, *n),
     };
 
@@ -286,6 +292,17 @@ fn run_journal(cli: &Cli, data_dir: &std::path::Path, limit: u32) -> Result<(), 
         let detail = entry.detail.as_deref().unwrap_or("");
         println!("{}  {:24}  {device}  {detail}", entry.at, entry.action);
     }
+    Ok(())
+}
+
+fn run_revoke(cli: &Cli, data_dir: &std::path::Path, device: &str) -> Result<(), String> {
+    let conn = connect(cli, data_dir)?;
+    let token = conn.token.as_deref().unwrap_or_default();
+    ureq::delete(format!("{}/api/v1/devices/{device}", conn.url))
+        .header("X-Fluence-Token", token)
+        .call()
+        .map_err(|e| format!("revoke failed: {e}"))?;
+    println!("device {device} revoked");
     Ok(())
 }
 

@@ -2496,6 +2496,49 @@
         "x-fluence-stability": "experimental"
       }
     },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "operationId": "delete_devices_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error (RFC 9457)"
+          }
+        },
+        "security": [
+          {
+            "fluenceToken": []
+          }
+        ],
+        "summary": "Revoke a paired device's token (caregiver space; SPEC §7.C)",
+        "tags": [
+          "devices"
+        ],
+        "x-fluence-scopes": [
+          "care"
+        ],
+        "x-fluence-stability": "stable"
+      }
+    },
     "/api/v1/input/targets": {
       "put": {
         "operationId": "put_input_targets",
@@ -3823,6 +3866,10 @@
     {
       "description": "FluenceInput v1 target declaration (SPEC §4.A)",
       "name": "input"
+    },
+    {
+      "description": "Paired device management — caregiver space (SPEC §7.C)",
+      "name": "devices"
     },
     {
       "description": "Health, capabilities, degradation events (SPEC §2.C)",

@@ -417,6 +417,16 @@ pub fn routes() -> &'static [RouteSpec] {
             }],
         },
         RouteSpec {
+            method: Delete,
+            path: "/api/v1/devices/{id}",
+            summary: "Revoke a paired device's token (caregiver space; SPEC §7.C)",
+            auth: RouteAuth::Scoped(&[Care]),
+            stability: Stable,
+            request: None,
+            response: NoContent,
+            query: &[],
+        },
+        RouteSpec {
             method: Post,
             path: "/api/v1/system/emergency",
             summary: "Raise or clear the emergency alert (double-confirmed; D-7.4)",
