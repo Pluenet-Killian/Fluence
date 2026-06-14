@@ -39,8 +39,13 @@ correctifs. À partir de la première release : canaux `beta` et `stable` (D-11.
 
 ## Mesures en place
 
-- Fuzzing des parseurs réseau (protocole d'entrée, API, IPC) en CI nightly dès leur création.
-- `cargo-deny` (advisories RustSec) bloquant en CI.
-- Threat model publié et tenu à jour dans `docs/SPEC.md` §9.A.
+- **Tests de robustesse (property-based)** des parseurs/entrées non fiables à chaque build CI,
+  sur les deux OS : la math d'entrée (coordonnées/pose client) ne panique jamais sur des `f64`
+  adverses (NaN/∞/extrêmes) et préserve la finitude (`crates/fluence-input/tests/robustness.rs`).
+  Framing IPC borné (16 MiB) ; messages API/IPC en serde (pas de parseur écrit à la main).
+  Fuzzing continu `cargo-fuzz` en nightly = dette suivie (D-9.3).
+- `cargo-deny` (advisories RustSec) bloquant en CI et en nightly.
+- **Threat model vérifiable**, point par point avec mitigations et tests : `docs/security/threat-model.md`
+  (résumé normatif en `docs/SPEC.md` §9.A).
 - Revue de sécurité communautaire organisée avant toute bêta publique ; audit professionnel
   documenté comme dette assumée d'ici là (D-9.3).
