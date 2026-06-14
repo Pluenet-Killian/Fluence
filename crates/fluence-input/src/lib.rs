@@ -25,6 +25,7 @@ mod fusion;
 mod gaze;
 mod geometry;
 mod one_euro;
+mod replay;
 
 use std::time::Duration;
 
@@ -42,6 +43,9 @@ pub use fusion::{
 pub use gaze::{GazeConfig, GazePipeline};
 pub use geometry::hit_test;
 pub use one_euro::{OneEuro, OneEuro2D, OneEuroConfig};
+pub use replay::{
+    AccuracyReport, GAZE_SESSION_VERSION, GazeSample, GazeSession, evaluate, synthetic_grid,
+};
 
 /// Dwell selection parameters (SPEC §4.A, §4.C).
 #[derive(Debug, Clone, Copy)]
