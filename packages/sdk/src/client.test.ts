@@ -4,6 +4,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { FluenceClient, FluenceProblemError } from "./client.js";
 import type {
+  DeviceList,
   HealthResponse,
   NextCharsResponse,
   PairResponse,
@@ -129,6 +130,29 @@ describe("FluenceClient transport", () => {
     await client.nextChars("s1", "bonjou r&é");
     expect(calls[0]?.url).toBe(`${BASE}/api/v1/sessions/s1/next-chars?prefix=bonjou%20r%26%C3%A9`);
   });
+
+  it("lists devices and the access journal for the caregiver space", async () => {
+    const { fetch, calls } = mockFetch([
+      Response.json({ devices: [] }),
+      Response.json({ entries: [] }),
+    ]);
+    const client = new FluenceClient({ baseUrl: BASE, token: "care", fetch });
+
+    await client.devices();
+    expect(calls[0]?.url).toBe(`${BASE}/api/v1/devices`);
+
+    await client.journal(20);
+    expect(calls[1]?.url).toBe(`${BASE}/api/v1/system/journal?limit=20`);
+  });
+
+  it("revokes a device by id (DELETE, path-escaped)", async () => {
+    const { fetch, calls } = mockFetch([new Response(null, { status: 204 })]);
+    const client = new FluenceClient({ baseUrl: BASE, token: "care", fetch });
+
+    await client.revokeDevice("dev/2 x");
+    expect(calls[0]?.init.method).toBe("DELETE");
+    expect(calls[0]?.url).toBe(`${BASE}/api/v1/devices/dev%2F2%20x`);
+  });
 });
 
 describe("FluenceClient types (T3: the generated SDK compiles and is typed)", () => {
@@ -138,6 +162,7 @@ describe("FluenceClient types (T3: the generated SDK compiles and is typed)", ()
       ReturnType<FluenceClient["nextChars"]>
     >().resolves.toEqualTypeOf<NextCharsResponse>();
     expectTypeOf<ReturnType<FluenceClient["pair"]>>().resolves.toEqualTypeOf<PairResponse>();
+    expectTypeOf<ReturnType<FluenceClient["devices"]>>().resolves.toEqualTypeOf<DeviceList>();
     // The SSE generator yields the discriminated union, narrowable on
     // `event` — exactly the canonical form of the schema.
     expectTypeOf<SuggestEvent>().toExtend<{ event: "delta" | "final" | "aborted" }>();

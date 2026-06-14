@@ -14,9 +14,11 @@
 import { FluenceProblemError, problemFromResponse } from "./errors.js";
 import { parseSseStream } from "./sse.js";
 import type {
+  AccessJournalResponse,
   CapabilitiesResponse,
   ConsentResponse,
   CreateMemoryItem,
+  DeviceList,
   CreateSessionResponse,
   Draft,
   EmergencyRequest,
@@ -171,6 +173,24 @@ export class FluenceClient {
   /** Installation tier and available features. */
   async capabilities(): Promise<CapabilitiesResponse> {
     return this.#json("GET", "/api/v1/system/capabilities");
+  }
+
+  // ---- Caregiver space (SPEC §7.C) — care scope ----
+
+  /** Recent access-journal entries, newest first (metadata only, never P0). */
+  async journal(limit?: number): Promise<AccessJournalResponse> {
+    const query = limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`;
+    return this.#json("GET", `/api/v1/system/journal${query}`);
+  }
+
+  /** Lists paired devices (revoked included). */
+  async devices(): Promise<DeviceList> {
+    return this.#json("GET", "/api/v1/devices");
+  }
+
+  /** Revokes a paired device's token (idempotent). */
+  async revokeDevice(deviceId: string): Promise<void> {
+    await this.#noContent("DELETE", `/api/v1/devices/${encodeURIComponent(deviceId)}`);
   }
 
   /**

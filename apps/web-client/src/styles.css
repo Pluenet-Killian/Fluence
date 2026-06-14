@@ -198,3 +198,67 @@ body {
   flex: 1;
   min-height: 4rem;
 }
+
+/* Caregiver space (#care) — a calm, readable dashboard (SPEC §7.C). */
+.care {
+  max-width: 50rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.care-card {
+  border: 1px solid #d0d0d0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.care-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+.care-workers,
+.care-devices,
+.care-journal {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.care-worker,
+.care-device,
+.care-journal-entry {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #eee;
+}
+.care-state-down {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+.care-state-ready {
+  color: #2e7d32;
+}
+.care-device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.care-revoked {
+  opacity: 0.55;
+}
+.care-revoke-btn,
+.care-revoke-confirm,
+.care-revoke-cancel {
+  min-height: 2.5rem;
+  padding: 0.25rem 0.75rem;
+}
+.care-revoke-confirm {
+  background: var(--danger, #c0392b);
+  color: #fff;
+}
+.care-muted {
+  color: #777;
+  font-style: italic;
+}
+.care-journal-at {
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}

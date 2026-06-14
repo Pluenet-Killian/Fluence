@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Entry point: a minimal connect screen (paste a `control` token, kept in
- * `localStorage`) then the composer. Same-origin by construction — the hub
- * serves these files (PLAN 5.3); in dev, Vite proxies the hub.
+ * Entry point and routing. The default view is the composer (paste a `control`
+ * token, kept in `localStorage`); the `#care` hash opens the caregiver space
+ * (a separate `care` token). Same-origin by construction — the hub serves these
+ * files (PLAN 5.3); in dev, Vite proxies the hub.
  */
 
 import { FluenceClient } from "@fluence/sdk";
 
+import { CaregiverView } from "./caregiver.js";
 import { Composer } from "./composer.js";
 import { h } from "./dom.js";
 import { t } from "./i18n.js";
 import "./styles.css";
 
 const TOKEN_KEY = "fluence.token";
+const CARE_TOKEN_KEY = "fluence.care_token";
 
 function appRoot(): HTMLElement {
   const element = document.getElementById("app");
@@ -23,7 +26,16 @@ function appRoot(): HTMLElement {
   return element;
 }
 
-function renderConnect(app: HTMLElement, error?: string): void {
+/** A connect screen, parameterized by which view it leads into. */
+interface ConnectConfig {
+  title: string;
+  hint: string;
+  storageKey: string;
+  onConnect: () => void;
+  error?: string;
+}
+
+function renderConnect(app: HTMLElement, config: ConnectConfig): void {
   const input = h("input", {
     class: "token-input",
     type: "password",
@@ -37,8 +49,8 @@ function renderConnect(app: HTMLElement, error?: string): void {
     if (token.length === 0) {
       return;
     }
-    localStorage.setItem(TOKEN_KEY, token);
-    void boot();
+    localStorage.setItem(config.storageKey, token);
+    config.onConnect();
   };
   submit.addEventListener("click", submitToken);
   input.addEventListener("keydown", (event) => {
@@ -49,20 +61,27 @@ function renderConnect(app: HTMLElement, error?: string): void {
 
   app.replaceChildren(
     h("div", { class: "connect" }, [
-      h("h1", {}, [t("connect.title")]),
+      h("h1", {}, [config.title]),
       input,
       submit,
-      h("p", { class: "connect-hint" }, [t("connect.hint")]),
-      ...(error === undefined ? [] : [h("p", { class: "connect-error", role: "alert" }, [error])]),
+      h("p", { class: "connect-hint" }, [config.hint]),
+      ...(config.error === undefined
+        ? []
+        : [h("p", { class: "connect-error", role: "alert" }, [config.error])]),
     ]),
   );
 }
 
-async function boot(): Promise<void> {
+async function bootComposer(): Promise<void> {
   const app = appRoot();
   const stored = localStorage.getItem(TOKEN_KEY);
   if (stored === null) {
-    renderConnect(app);
+    renderConnect(app, {
+      title: t("connect.title"),
+      hint: t("connect.hint"),
+      storageKey: TOKEN_KEY,
+      onConnect: () => void bootComposer(),
+    });
     return;
   }
   const client = new FluenceClient({ baseUrl: window.location.origin, token: stored });
@@ -71,8 +90,51 @@ async function boot(): Promise<void> {
     await composer.start();
   } catch {
     localStorage.removeItem(TOKEN_KEY);
-    renderConnect(app, t("connect.error"));
+    renderConnect(app, {
+      title: t("connect.title"),
+      hint: t("connect.hint"),
+      storageKey: TOKEN_KEY,
+      onConnect: () => void bootComposer(),
+      error: t("connect.error"),
+    });
   }
 }
 
-void boot();
+async function bootCaregiver(): Promise<void> {
+  const app = appRoot();
+  const stored = localStorage.getItem(CARE_TOKEN_KEY);
+  if (stored === null) {
+    renderConnect(app, {
+      title: t("connect.careTitle"),
+      hint: t("connect.careHint"),
+      storageKey: CARE_TOKEN_KEY,
+      onConnect: () => void bootCaregiver(),
+    });
+    return;
+  }
+  const client = new FluenceClient({ baseUrl: window.location.origin, token: stored });
+  const view = new CaregiverView(client, app);
+  try {
+    await view.start();
+  } catch {
+    localStorage.removeItem(CARE_TOKEN_KEY);
+    renderConnect(app, {
+      title: t("connect.careTitle"),
+      hint: t("connect.careHint"),
+      storageKey: CARE_TOKEN_KEY,
+      onConnect: () => void bootCaregiver(),
+      error: t("connect.error"),
+    });
+  }
+}
+
+function boot(): void {
+  if (window.location.hash === "#care") {
+    void bootCaregiver();
+  } else {
+    void bootComposer();
+  }
+}
+
+window.addEventListener("hashchange", boot);
+boot();
