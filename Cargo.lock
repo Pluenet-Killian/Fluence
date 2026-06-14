@@ -576,6 +576,8 @@ version = "0.0.0"
 dependencies = [
  "fluence-protocol",
  "proptest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

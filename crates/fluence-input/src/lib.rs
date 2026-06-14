@@ -19,6 +19,7 @@
 //! calibration arrive with webcam gaze (Phase 6); for now every on-target
 //! sample counts as a fixation.
 
+mod calibration;
 mod fixation;
 mod fusion;
 mod geometry;
@@ -29,6 +30,9 @@ use std::time::Duration;
 use fluence_protocol::Normalized;
 use fluence_protocol::input::{CommitMethod, Target, TargetMap, TargetMapPatch, Viewport};
 
+pub use calibration::{
+    CALIBRATION_PROFILE_VERSION, CalibrationProfile, Calibrator, DEFAULT_LAMBDA, RidgeModel,
+};
 pub use fixation::{GazeState, IvtClassifier, IvtConfig};
 pub use fusion::{
     FusionConfig, Magnet, MagnetismConfig, NoiseModel, apply_magnetism, fuse_confidence_weighted,
