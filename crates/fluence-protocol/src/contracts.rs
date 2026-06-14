@@ -114,6 +114,10 @@ const TAGS: &[(&str, &str)] = &[
     ("profiles", "User profiles — experimental (SPEC §7.B)"),
     ("input", "FluenceInput v1 target declaration (SPEC §4.A)"),
     (
+        "devices",
+        "Paired device management — caregiver space (SPEC §7.C)",
+    ),
+    (
         "system",
         "Health, capabilities, degradation events (SPEC §2.C)",
     ),
