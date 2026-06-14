@@ -142,6 +142,15 @@ body {
 .key.focused {
   border-color: var(--accent);
 }
+/* Calibration: the key to fixate is highlighted strongly (gaze mode). */
+.key.calibrating {
+  border-color: var(--accent);
+  outline: 3px solid var(--accent);
+}
+/* Gaze toggle, when active. */
+.gaze.on {
+  border-color: var(--accent);
+}
 /* Dwell gauge driven by the --dwell custom property (0..1). */
 .key-gauge {
   position: absolute;

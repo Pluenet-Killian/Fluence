@@ -19,16 +19,22 @@
 //! death, and the autosave rate (≤ 2 writes/s) makes fsync cost invisible.
 
 mod actor;
+mod backup;
 mod key;
+mod recovery;
 mod schema;
 mod types;
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use secrecy::SecretString;
 use tokio::sync::{mpsc, oneshot};
 
+pub use backup::{back_up, restore};
 pub use key::KeySource;
+pub use recovery::{RecoveryError, RecoverySecret};
 pub use types::{AccessEntry, DeviceRecord, DraftRecord, DraftWrite, NewAccessEntry, NewDevice};
 
 use actor::Command;
@@ -67,6 +73,33 @@ pub struct StoreConfig {
 #[derive(Debug, Clone)]
 pub struct Store {
     tx: mpsc::Sender<Command>,
+    /// Joins the owning thread when the last handle drops (see [`StoreThread`]).
+    _thread: Arc<StoreThread>,
+}
+
+/// Owns the store thread's [`JoinHandle`] so the **last** [`Store`] handle to
+/// drop joins it. Without this the thread is detached: on a graceful shutdown
+/// it would run its final WAL checkpoint — touching `SQLCipher`/`OpenSSL`
+/// statics — while the process and the async runtime tear down around it, an
+/// intermittent `SIGABRT` (seen as a flaky teardown of the `next_chars`
+/// integration test, whose tests all pass before the abort). Joining makes
+/// shutdown deterministic; it never affects the kill-tests, which `kill -9` the
+/// process (no graceful drop — the WAL design covers that).
+#[derive(Debug)]
+struct StoreThread {
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for StoreThread {
+    fn drop(&mut self) {
+        // The last handle is gone → every `Sender` is dropped → the actor's
+        // `blocking_recv` returns `None`, the loop exits, the final checkpoint
+        // runs and `run` returns. Join so that completes (and the connection
+        // closes) before teardown, instead of racing it.
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 impl Store {
@@ -86,12 +119,17 @@ impl Store {
     pub async fn open(config: StoreConfig) -> Result<Self, StoreError> {
         let (ready_tx, ready_rx) = oneshot::channel();
         let (tx, rx) = mpsc::channel(64);
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name("fluence-store".into())
             .spawn(move || actor::run(&config, rx, ready_tx))
             .expect("spawning the store thread never fails");
         ready_rx.await.map_err(|_| StoreError::Closed)??;
-        Ok(Self { tx })
+        Ok(Self {
+            tx,
+            _thread: Arc::new(StoreThread {
+                handle: Some(handle),
+            }),
+        })
     }
 
     async fn call<R>(
@@ -215,6 +253,19 @@ impl Store {
             reply,
         })
         .await
+    }
+
+    /// Erases all personal content (drafts + profiles) and reclaims the freed
+    /// pages (SPEC §9.A «&nbsp;oubli&nbsp;»). Returns the number of rows
+    /// removed — metadata, never P0. Devices and the access journal are kept;
+    /// a full factory reset is removing the data directory at the operator
+    /// level. To back data up first, see [`crate::back_up`].
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError`] on database failure or closed store.
+    pub async fn purge_content(&self) -> Result<u64, StoreError> {
+        self.call(|reply| Command::PurgeContent { reply }).await
     }
 
     /// Appends an access-journal entry (metadata only — never P0).

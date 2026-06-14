@@ -340,3 +340,27 @@ async fn database_file_is_actually_encrypted() {
         "file is not encrypted"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropping_a_store_joins_its_owning_thread() {
+    // Regression: the owning thread used to be detached, so on a graceful drop
+    // (no `close`) its final WAL checkpoint — touching SQLCipher/OpenSSL —
+    // raced process/runtime teardown, an intermittent SIGABRT. Drop now joins
+    // the thread, so by the time `drop` returns the checkpoint has run and the
+    // connection has closed: SQLite has truncated/removed the -wal sidecar.
+    // This is deterministic only if the join actually happens.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Store::open(config_in(&dir)).await.expect("open");
+    store
+        .upsert_draft("s".into(), SecretString::from("contenu"), 1, 1)
+        .await
+        .expect("write");
+    drop(store); // No close(): rely on Drop joining the thread.
+
+    let wal = dir.path().join("store.db-wal");
+    let wal_len = std::fs::metadata(&wal).map_or(0, |m| m.len());
+    assert_eq!(
+        wal_len, 0,
+        "a joined drop must have checkpointed and closed the connection (WAL drained)"
+    );
+}

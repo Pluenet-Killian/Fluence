@@ -63,20 +63,27 @@ définis en SPEC D-12.2).
   par source** — `gaze:…` à travers calibration+fusion+dwell, `mouse:…`
   directement au moteur de dwell (chemin souris **inchangé**, e2e vert). Tests
   hub déterministes (regard calibré → commit ; non calibré → rien).
+- **Client regard** (`apps/web-client`, opt-in) : estimation MediaPipe (pure,
+  testée) → regard brut, source webcam (MediaPipe **dynamiquement importé**,
+  chargé en chunk lazy, assets **offline** locaux), calibration express (fixations
+  de touches → `cal.fit`), et **`record-gaze`** (6.4) → dataset `GazeSession`
+  réel compatible avec le replay Rust. Le chemin souris reste intact (e2e vert).
 
 ### Vérifié
 
-- 47 tests `fluence-input` + tests hub regard (calibré/non-calibré) ; chemin
-  souris préservé (tests dwell/targets.patch + suite T5 e2e verts) ; contrats
+- 47 tests `fluence-input` + tests hub regard (calibré/non-calibré) + **20 tests
+  web-client** (estimation + frames regard inclus) ; chemin souris préservé
+  (tests dwell/targets.patch + **suite T5 e2e verte localement**) ; contrats
   régénérés (goldens/openapi/api.d.ts), spectral 0 erreur. `xtask gaze-accuracy`
   100 % synthétique.
 
 ### Reste (pour `phase-6-done`)
 
-- Source regard MediaPipe du composeur, outil `record-gaze`, **session webcam réelle**
-  (action physique). Honnêteté : les datasets nightly sont **synthétiques** (gate
-  de correction), pas une revendication de précision réelle. ML-regard (6.5) =
-  post-A1 par conception.
+- Provisionner les assets MediaPipe offline (`docs/demos/phase6-gaze.md`) +
+  **session webcam réelle** (humain + caméra) = action physique. Honnêteté : les
+  datasets nightly sont **synthétiques** (gate de correction), pas une
+  revendication de précision réelle ; `record-gaze` produit de la **vraie**
+  donnée à mesurer. ML-regard (6.5) = post-A1 par conception.
 
 ## Phase 5 — La boucle complète (terminée — 2026-06-14, `phase-5-done`)
 
