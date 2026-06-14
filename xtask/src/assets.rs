@@ -196,8 +196,12 @@ fn download_with_resume(
     let part = dest.with_file_name(format!("{}.part", model.file));
 
     let mut have = part.metadata().map(|meta| meta.len()).unwrap_or(0);
-    if have > model.bytes {
-        // A `.part` larger than expected cannot be a prefix of this file.
+    if have >= model.bytes {
+        // A `.part` at or beyond the expected size is not a resumable prefix: it
+        // is over-long, or a complete-but-unverified leftover (a prior run died
+        // between download and rename). Discard and refetch from scratch rather
+        // than send `Range: bytes={size}-`, which a correct server answers with
+        // 416 — turning a finished download into a hard error.
         fs::remove_file(&part).ok();
         have = 0;
     }

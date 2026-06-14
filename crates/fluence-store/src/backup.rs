@@ -126,8 +126,17 @@ fn reencrypt(
     let dst_str = dst
         .to_str()
         .ok_or_else(|| StoreError::Key("backup path is not valid UTF-8".into()))?;
-    // The key is validated hex (safe to inline); the path is bound, since it
-    // may contain spaces or, on Windows, backslashes.
+    // The key is inlined into the ATTACH (SQLCipher's `KEY` does not bind a
+    // parameter for a raw key); the path IS bound (spaces / Windows backslashes).
+    // Defense in depth: re-assert the key is exactly 64 hex chars right here, at
+    // the point of inlining, so the no-injection invariant does not depend on a
+    // guarantee made in another crate/function (every caller already passes
+    // validated hex; this keeps it true if a future caller does not).
+    if dst_key_hex.len() != 64 || !dst_key_hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(StoreError::Key(
+            "destination key is not 64 hex characters".into(),
+        ));
+    }
     conn.execute(
         &format!("ATTACH DATABASE ?1 AS fluence_backup KEY \"x'{dst_key_hex}'\""),
         rusqlite::params![dst_str],

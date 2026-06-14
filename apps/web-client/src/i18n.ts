@@ -48,6 +48,7 @@ export const FR = {
   "care.revoked": "révoqué",
   "care.journal": "Journal d'accès",
   "care.noJournal": "Aucune entrée",
+  "care.revokeFailed": "La révocation a échoué — vérifiez le hub puis rechargez.",
 } as const;
 
 /** A valid translation key. */

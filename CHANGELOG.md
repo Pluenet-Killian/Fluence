@@ -84,9 +84,12 @@ définis en SPEC D-12.2).
 
 ### Mesuré (critère A1)
 
-- **KS% ≥ 25 % ATTEINT** : `cargo xtask run-eval` sur le corpus complet →
-  **n-gram (sans contexte conversationnel) 35,49 %** ≥ 25 % (oracle 66,76 % =
-  plafond ; le LLM pousse vers ce plafond). Reproductible, sans modèle lourd.
+- **KS% ≥ 25 % hors-domaine ATTEINT** (cible D-12.2/ADR-0008 = hors-domaine sur
+  v1) : rephrase LLM **29,52 % KS% hors-domaine** sur le split test v1 (Phase 4
+  #31, sans contexte conversationnel) ≥ 25 % ; la baseline n-gram hors-domaine
+  est **11,71 %** (< 25 %). *(Correction d'audit : un brouillon citait à tort le
+  **35,49 %** de `run-eval`, qui est **in-domain sur la graine v0** — gonflé,
+  explicitement non-A1 par ADR-0008.)*
 - **Couvertures aux gates** : gate `fluence-input` ≥ 85 % ajouté en CI (en plus
   de `fluence-protocol`).
 
