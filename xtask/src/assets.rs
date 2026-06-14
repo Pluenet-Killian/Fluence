@@ -10,8 +10,14 @@
 //! command is idempotent: an already-cached, verified model is left untouched.
 //!
 //! Scope is *models* only. The `llama-server` binary is infrastructure
-//! (provisioned by CI/dev, located via config), not a managed model; minisign
-//! signatures arrive in Phase 7.
+//! (provisioned by CI/dev, located via config), not a managed model.
+//!
+//! Provenance (D-3.2, Phase 7.4): the manifest shape, its **minisign**
+//! signature and sha256 checks live in the shared `fluence-models` crate (single
+//! source of truth). When a `<manifest>.minisig` and `FLUENCE_MODELS_PUBKEY` are
+//! both present, the manifest signature is verified **fail-closed** before any
+//! model is trusted; in dev/CI neither is set and the in-repo, git-trusted
+//! manifest is used as before.
 
 use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
@@ -19,7 +25,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use serde::Deserialize;
+use fluence_models::{Manifest, ModelEntry};
 use sha2::{Digest, Sha256};
 
 /// Exit code for an integrity or download failure (distinct from usage = 1,
@@ -28,30 +34,6 @@ const EXIT_FAILURE: u8 = 1;
 
 /// Read buffer for hashing and the size sanity check.
 const CHUNK: usize = 64 * 1024;
-
-/// The pinned test-asset manifest (`models/test-assets.json`).
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    /// Schema version (only `1` is understood).
-    version: u32,
-    /// The models to fetch.
-    models: Vec<Model>,
-}
-
-/// One pinned model.
-#[derive(Debug, Deserialize)]
-struct Model {
-    /// Stable identifier for logs.
-    id: String,
-    /// Cache filename (a plain name, no path separators).
-    file: String,
-    /// Source URL (HTTPS).
-    url: String,
-    /// Expected SHA-256, lowercase hex — the integrity contract.
-    sha256: String,
-    /// Expected size in bytes (a cheap completeness check before hashing).
-    bytes: u64,
-}
 
 /// What `ensure_model` did.
 #[derive(Debug, PartialEq, Eq)]
@@ -125,56 +107,60 @@ pub fn run(repo_root: &Path, check_only: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Reads, parses and validates the manifest at `path`.
+/// Reads, verifies provenance, and parses the manifest at `path`.
+///
+/// Parsing/validation is the shared `fluence-models` contract. Provenance: when
+/// a `<path>.minisig` and `FLUENCE_MODELS_PUBKEY` are both present, the minisign
+/// signature is verified before the manifest is trusted; a signature with the
+/// other half missing is a hard error (no silent downgrade); with neither set,
+/// the in-repo git-trusted manifest is used (dev/CI).
 fn parse_manifest(path: &Path) -> Result<Manifest, String> {
-    let raw = fs::read_to_string(path)
+    let bytes = fs::read(path)
         .map_err(|error| format!("cannot read manifest {}: {error}", path.display()))?;
-    let manifest: Manifest = serde_json::from_str(&raw)
-        .map_err(|error| format!("invalid manifest {}: {error}", path.display()))?;
-    validate(&manifest)?;
-    Ok(manifest)
+    if matches!(verify_provenance(path, &bytes)?, Provenance::Verified) {
+        println!("download-test-assets: manifest signature verified (minisign)");
+    }
+    Manifest::parse(&bytes).map_err(|error| format!("invalid manifest {}: {error}", path.display()))
 }
 
-/// Rejects a malformed manifest with a precise reason (loud, never silent).
-fn validate(manifest: &Manifest) -> Result<(), String> {
-    if manifest.version != 1 {
-        return Err(format!(
-            "unsupported manifest version {} (this xtask understands 1)",
-            manifest.version
-        ));
-    }
-    if manifest.models.is_empty() {
-        return Err("manifest lists no models".to_owned());
-    }
-    for model in &manifest.models {
-        if model.sha256.len() != 64 || !model.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(format!(
-                "model {}: sha256 must be 64 hex characters",
-                model.id
-            ));
+/// Manifest provenance outcome.
+enum Provenance {
+    /// A minisign signature was present and verified against the trusted key.
+    Verified,
+    /// No signature and no key configured — the git-trusted dev/CI default.
+    Unsigned,
+}
+
+/// Verifies the manifest's minisign signature when configured (fail-closed).
+fn verify_provenance(manifest_path: &Path, bytes: &[u8]) -> Result<Provenance, String> {
+    let sig_path = PathBuf::from(format!("{}.minisig", manifest_path.display()));
+    let pubkey = std::env::var("FLUENCE_MODELS_PUBKEY").ok();
+    match (sig_path.exists(), pubkey) {
+        (true, Some(key)) => {
+            let sig = fs::read_to_string(&sig_path)
+                .map_err(|e| format!("cannot read signature {}: {e}", sig_path.display()))?;
+            fluence_models::verify_manifest_signature(bytes, &sig, &key)
+                .map_err(|e| format!("manifest signature verification failed: {e}"))?;
+            Ok(Provenance::Verified)
         }
-        if !model.url.starts_with("https://") {
-            return Err(format!("model {}: url must be https", model.id));
-        }
-        // The filename is joined onto the cache directory: reject anything that
-        // could escape it (path traversal) or denote a directory.
-        if model.file.is_empty()
-            || model.file.contains('/')
-            || model.file.contains('\\')
-            || model.file.contains("..")
-        {
-            return Err(format!(
-                "model {}: file must be a plain filename, got {:?}",
-                model.id, model.file
-            ));
-        }
+        (true, None) => Err(format!(
+            "a manifest signature {} is present but FLUENCE_MODELS_PUBKEY is unset — \
+             refusing to trust an unverifiable signature",
+            sig_path.display()
+        )),
+        (false, Some(_)) => Err(format!(
+            "FLUENCE_MODELS_PUBKEY is set but no signature {} is present — \
+             refusing to proceed unsigned",
+            sig_path.display()
+        )),
+        (false, None) => Ok(Provenance::Unsigned),
     }
-    Ok(())
 }
 
 /// The local model cache: `FLUENCE_MODELS_DIR` if set, else
-/// `<repo>/.fluence-cache/models` (already git-ignored).
-fn models_dir(repo_root: &Path) -> PathBuf {
+/// `<repo>/.fluence-cache/models` (already git-ignored). Shared with
+/// `models-gc` so the cache path has one definition.
+pub(crate) fn models_dir(repo_root: &Path) -> PathBuf {
     std::env::var_os("FLUENCE_MODELS_DIR").map_or_else(
         || repo_root.join(".fluence-cache").join("models"),
         PathBuf::from,
@@ -183,7 +169,7 @@ fn models_dir(repo_root: &Path) -> PathBuf {
 
 /// Ensures `model` is present in `dir` and matches its sha256, downloading
 /// (or resuming) if needed.
-fn ensure_model(model: &Model, dir: &Path, agent: &ureq::Agent) -> Result<Outcome, String> {
+fn ensure_model(model: &ModelEntry, dir: &Path, agent: &ureq::Agent) -> Result<Outcome, String> {
     let dest = dir.join(&model.file);
     if dest.exists() {
         match sha256_file(&dest) {
@@ -202,7 +188,11 @@ fn ensure_model(model: &Model, dir: &Path, agent: &ureq::Agent) -> Result<Outcom
 
 /// Downloads `model` to `dest`, resuming from a `<dest>.part` if one exists,
 /// then verifies size + sha256 and atomically renames it into place.
-fn download_with_resume(model: &Model, dest: &Path, agent: &ureq::Agent) -> Result<(), String> {
+fn download_with_resume(
+    model: &ModelEntry,
+    dest: &Path,
+    agent: &ureq::Agent,
+) -> Result<(), String> {
     let part = dest.with_file_name(format!("{}.part", model.file));
 
     let mut have = part.metadata().map(|meta| meta.len()).unwrap_or(0);
@@ -322,13 +312,15 @@ mod tests {
         hex(&Sha256::digest(bytes))
     }
 
-    fn model(url: &str, body: &[u8]) -> Model {
-        Model {
+    fn model(url: &str, body: &[u8]) -> ModelEntry {
+        ModelEntry {
             id: "test".to_owned(),
             file: "asset.bin".to_owned(),
             url: url.to_owned(),
             sha256: sha256_bytes(body),
             bytes: body.len() as u64,
+            license: None,
+            purpose: None,
         }
     }
 
@@ -407,69 +399,9 @@ mod tests {
         assert_eq!(hex(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
     }
 
-    #[test]
-    fn validate_rejects_bad_sha_url_and_filename() {
-        let ok = Model {
-            id: "m".to_owned(),
-            file: "m.gguf".to_owned(),
-            url: "https://example/m".to_owned(),
-            sha256: "a".repeat(64),
-            bytes: 1,
-        };
-        assert!(
-            validate(&Manifest {
-                version: 1,
-                models: vec![clone_model(&ok)]
-            })
-            .is_ok()
-        );
-
-        let bad_sha = Model {
-            sha256: "xyz".to_owned(),
-            ..clone_model(&ok)
-        };
-        let bad_url = Model {
-            url: "http://insecure".to_owned(),
-            ..clone_model(&ok)
-        };
-        let traversal = Model {
-            file: "../escape".to_owned(),
-            ..clone_model(&ok)
-        };
-        for bad in [bad_sha, bad_url, traversal] {
-            assert!(
-                validate(&Manifest {
-                    version: 1,
-                    models: vec![bad]
-                })
-                .is_err()
-            );
-        }
-        assert!(
-            validate(&Manifest {
-                version: 2,
-                models: vec![clone_model(&ok)]
-            })
-            .is_err()
-        );
-        assert!(
-            validate(&Manifest {
-                version: 1,
-                models: vec![]
-            })
-            .is_err()
-        );
-    }
-
-    fn clone_model(model: &Model) -> Model {
-        Model {
-            id: model.id.clone(),
-            file: model.file.clone(),
-            url: model.url.clone(),
-            sha256: model.sha256.clone(),
-            bytes: model.bytes,
-        }
-    }
+    // Manifest parsing/validation is the `fluence-models` contract, tested
+    // there (version, empty, sha256, https, path-traversal). Here we cover the
+    // download/resume/integrity behaviour that is xtask's own.
 
     #[test]
     fn downloads_and_verifies_a_fresh_file() {

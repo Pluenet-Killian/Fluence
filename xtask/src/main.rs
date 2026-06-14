@@ -15,6 +15,7 @@ mod contracts;
 mod eval;
 mod gaze;
 mod licenses;
+mod models;
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
@@ -64,6 +65,17 @@ fn main() -> ExitCode {
             eval::run(&repo_root(), &suite)
         }
         Some("gaze-accuracy") => gaze::run(),
+        Some("models-gc") => {
+            let apply = match args.next().as_deref() {
+                Some("--apply") => true,
+                None => false,
+                Some(other) => {
+                    eprintln!("xtask models-gc: unknown flag `{other}` (only --apply)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            models::gc(&repo_root(), apply)
+        }
         Some(other) => {
             eprintln!("xtask: unknown command `{other}`\n");
             print_usage();
@@ -90,6 +102,8 @@ fn print_usage() {
     eprintln!("                          build the n-gram and run the offline eval suite");
     eprintln!("  gaze-accuracy           replay synthetic gaze sessions through the");
     eprintln!("                          selection pipeline and gate on accuracy (T4)");
+    eprintln!("  models-gc [--apply]     reclaim cached model files the manifest no");
+    eprintln!("                          longer references; --apply deletes (else dry-run)");
 }
 
 /// The repository root (the parent of the `xtask` crate, wherever cargo was

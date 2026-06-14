@@ -1,0 +1,19 @@
+[package]
+name = "fluence-models"
+description = "Model manifest integrity: minisign signature + SHA-256 verification, and GC of unreferenced files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+minisign-verify = "0.2.3"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+sha2 = "0.10.9"
+thiserror = "2.0.18"

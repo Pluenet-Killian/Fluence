@@ -594,6 +594,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluence-models"
+version = "0.0.0"
+dependencies = [
+ "minisign-verify",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+]
+
+[[package]]
 name = "fluence-ngram"
 version = "0.0.0"
 dependencies = [
@@ -1186,6 +1197,12 @@ dependencies = [
  "mime",
  "unicase",
 ]
+
+[[package]]
+name = "minisign-verify"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"
@@ -2898,6 +2915,7 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "fluence-input",
+ "fluence-models",
  "fluence-protocol",
  "serde",
  "serde_json",

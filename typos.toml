@@ -5,8 +5,15 @@
 [default]
 # Citations françaises dans la doc de code (guillemets français) : le
 # produit est FR-first, les exemples de données utilisateur restent en
-# français réaliste.
-extend-ignore-re = ["«[^»]*»"]
+# français réaliste. On ignore aussi les blobs base64/hex embarqués (clés et
+# signatures minisign, digests sha256, vecteurs de test) : un run de 40+
+# caractères base64 ou un hex de 64 n'est jamais de la prose anglaise, mais le
+# dictionnaire y voit des « typos » (p. ex. `Iz`→`Is` dans une clé minisign).
+extend-ignore-re = [
+    "«[^»]*»",
+    "[A-Za-z0-9+/]{40,}={0,2}",
+    "\\b[0-9a-fA-F]{64}\\b",
+]
 
 [default.extend-words]
 # Mots français des chaînes d'exemple/test qui ressemblent à des typos
