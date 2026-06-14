@@ -219,9 +219,9 @@
 - T6 cible : ≥ 95 % de sélections correctes (cibles 2,5 cm, 60 cm) sur nos datasets internes — **critère de pivot** : si < 80 % en fin de phase → on assume des cibles par défaut plus grandes + fusion tête recommandée, et on le documente honnêtement (SPEC Caveats) plutôt que de mentir sur la précision.
 
 **Done quand**
-- [ ] Session réelle : calibration 45 s à la webcam puis composer un mot au regard seul (cibles adaptées), démontré sur FLU-REF-4 ou équivalent.
-- [ ] Datasets de regard versionnés + chiffre de précision publié en nightly.
-- [ ] Qualité de calibration visible en temps réel (base de l'espace aidant).
+- [ ] Session réelle : calibration 45 s à la webcam puis composer un mot au regard seul (cibles adaptées), démontré sur FLU-REF-4 ou équivalent. *(Moteur livré et testé — `GazePipeline` ; **reste** : câblage hub/contrat + source regard MediaPipe du client + une session humaine réelle = action physique.)*
+- [~] Datasets de regard versionnés + chiffre de précision publié en nightly. *(**Mécanisme livré** : replay T4 `evaluate` + gate `xtask gaze-accuracy` publié en nightly ; datasets **synthétiques** versionnés (`synthetic_grid`, gate de non-régression, pas une revendication de précision réelle). Datasets **réels** = capture `record-gaze`, à venir.)*
+- [ ] Qualité de calibration visible en temps réel (base de l'espace aidant). *(Métrique livrée — `Calibrator::quality`/dérive ; exposition temps réel = espace aidant, Phase 7.)*
 
 ---
 
@@ -269,12 +269,24 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 | 3 — Boussole | ✅ terminée (2026-06-13) | `phase-3-done` | harnais d'éval auto-validant (formats versionnés, métriques entières déterministes, utilisateur simulé + AZERTY, encadrement LbL/n-gram/oracle), corpus v0 (graine 15 dialogues, variantes, anti-pathos), `fluence-ngram` (crate Rust + serveur subprocess), `xtask run-eval` + porte de régression KS% en CI ; **différés en dette** : corpus v1 par teacher (#18), commentaire PR du delta (#19) ; ADR-0006 ; détails session 3 |
 | 4 — Moteur | ✅ terminée (2026-06-13) | `phase-4-done` | ingénierie livrée (session 4) + **critère valeur #31 ATTEINT** (session 5) : éval rephrase phrase-niveau + acceptation sémantique par embeddings (#35), corpus teacher v1 (136 dialogues, splits gelés, #36), mesure **hors-domaine** rephrase vs n-gram → **WPM +8,60 ET KS% +17,81 → PASS** (ADR-0008, critère amendé WPM-primaire) ; **intégré sur `main` via #41 (`c61ab06`), tag `phase-4-done` posé** |
 | 5 — Boucle complète | ✅ terminée (2026-06-14) | `phase-5-done` | briques 5.1–5.5 intégrées (#41) + **suite Playwright T5 persona verte Win+Linux** (#43, `integration.yml` job `e2e` : dwell+PARLER+autosave, suggestion acceptée, urgence double-confirmation reçue par un 2ᵉ client, hub tué→reconnexion+draft intact ; hub assemblé réel, n-gram fallback + voix OS, hermétique) + **démo reproductible filmée** (`docs/demos/phase5-loop.md`, Piper FR) + métriques WPM/éco-frappe affichées ; l'audit T5 a débusqué et corrigé 2 bugs de fiabilité (voix OS Windows à 0 octet ; course de seeding du moteur de dwell → `targets.patch` sur le WS) |
-| 6 — Regard | ⬜ | — | |
+| 6 — Regard | 🟡 moteur + gate d'exactitude livrés (2026-06-14) | — (→ `phase-6-done`) | **moteur regard complet et testé** dans `fluence-input` (One Euro, I-VT fixation/saccade, fusion pondérée + « regard désigne, tête affine », magnétisme plafonné 40 %, modèle de bruit par utilisateur, **calibration ridge** par profil — collecte/fit/maj continue lissée/dérive/format versionné, `GazePipeline` assemblé) + **gate d'exactitude T4** (`evaluate` replay + `xtask gaze-accuracy` synthétique publié en nightly) ; **reste pour `phase-6-done`** : câblage hub/contrat + source regard MediaPipe (client) + outil `record-gaze` + **session webcam réelle** (action physique) ; piste ML-regard (6.5) = post-A1 par conception |
 | 7 — Durcissement → A1 | ⬜ | — | |
 
 *Mise à jour de ce tableau à chaque fin de session de travail ; re-détaillage du plan à chaque fin de phase.*
 
 ### Journal de session
+
+**Session 8 — 2026-06-14 — Phase 6 « Le regard » : moteur + gate d'exactitude.**
+- **Moteur regard complet et testé** dans `fluence-input` (pur, clock-free, déterministe — rejouable), construit module par module en TDD :
+  - **`one_euro`** : filtre One Euro (Casiez CHI 2012), lisse au repos / réactif en mouvement, `min_cutoff`/`beta` par profil.
+  - **`fixation`** : I-VT (seuil de vitesse) → `Fixation`/`Saccade`/`Lost` ; le dwell ne progresse que sur fixation, tolérance aux micro-pertes.
+  - **`fusion`** : fusion pondérée par confiance, **« regard désigne, tête affine »** (offset tête borné à la zone), **magnétisme linguistique plafonné à 40 %** de l'espacement (agentivité prouvée par property test), **modèle de bruit par utilisateur** (variance EW des commits → taille de cible effective).
+  - **`calibration`** : régression **ridge** maison (solveur Gauss-Jordan sans dépendance), `Calibrator` (collecte pursuit, fit, **maj continue lissée** sur commits non corrigés, **détection de dérive** médiane > 1,5× touche sur 30 s, qualité = RMS visible), **profil versionné serde** par contexte.
+  - **`gaze`** : `GazePipeline` assemblé (calibration→fusion→One Euro→I-VT→magnétisme→dwell ; saccade/perte **maintiennent** la jauge sans annuler). Raffinement honnête de l'ordre §4.C : I-VT gate sur le point brut (le lissage ne masque jamais une saccade) + seules les fixations avancent le lisseur.
+  - **`replay`** : `evaluate` (replay T4 d'une session → % de cibles correctes) + `synthetic_grid` (datasets déterministes versionnés).
+- **Gate d'exactitude T4** : `cargo xtask gaze-accuracy` rejoue les sessions synthétiques (100 % sur grilles propres, ≥ 0,9 sous jitter modéré) et **publie le chiffre en nightly** (`nightly.yml`, job dédié, gate à 0,95). **Honnêteté** : données **synthétiques** = gate de correction/non-régression du pipeline, **pas** une revendication de précision réelle ; la précision réelle exige une capture réelle (`record-gaze`), distincte (clause de pivot §6).
+- **Reste pour `phase-6-done`** : câblage hub/contrat (acheminer le regard vers un `GazePipeline` par connexion + endpoints/messages de calibration) + **source regard MediaPipe** dans le composeur + outil `record-gaze` + une **session webcam réelle** (action physique, hors automatisation). Piste ML-regard (6.5) = post-A1 par conception (SPEC §4.C). **Pas de tag `phase-6-done`** tant que la session réelle n'est pas démontrée (jamais de case cochée à tort — PLAN §0.8).
+- **Reprise session suivante** : câbler le regard de bout en bout (hub + client MediaPipe + record-gaze), puis session webcam réelle → `phase-6-done` ; en parallèle, Phase 7 (durcissement → A1).
 
 **Session 7 — 2026-06-14 — Clôture Phase 5 : suite T5 + 2 fixes de fiabilité.**
 - **Audit en profondeur d'abord** (hub, `api/ws`, moteur d'entrée `fluence-input`, voix `fluence-voice`, SDK, composeur) pour connaître le code avant d'agir — il a directement débusqué deux **bugs de fiabilité** réels, corrigés en TDD (rouge→vert) :
@@ -283,8 +295,8 @@ Ph8 ASR + replies (bench D-3.4 : Voxtral Realtime vs whisper.cpp vs Gemma 4 audi
 - **Suite T5 livrée (#43)** : `apps/e2e` (Playwright, AGPL). Harnais (`hub-harness.ts`) qui **lance le vrai binaire hub** sur un port loopback libre, le configure headless (data dir jetable, PWA buildée via `FLUENCE_WEB_DIR`, **sans modèle lourd** : suggestions par n-gram fallback, voix OS), appaire un token `control` par le **vrai flux d'appairage**, et sait le crasher/relancer sur le même port. 4 scénarios persona (PLAN §1 l.193), **verts et stables ×3** en local, **verts Win+Linux en CI** (`integration.yml` job `e2e` : build hub release + composeur, espeak-ng sur Linux, Chromium).
 - **Découverte dwell** : l'accumulation du dwell est pilotée par l'**horloge murale serveur** à l'arrivée des échantillons (moteur event-driven, sans timer interne) → le test pilote le dwell en bougeant la souris ±1px (jiggle) jusqu'au commit (robuste au jitter CI). Artefact Playwright : `response.body()` est vide pour une réponse consommée par la page (le composeur lit le blob audio) → la vérif des octets passe par une requête indépendante.
 - **Démo reproductible filmée** : `pnpm --filter @fluence/e2e demo` (Piper FR si `FLUENCE_PIPER_*` exportés, le harnais les transmet) → vidéo `demo-output/.../video.webm` ; `docs/demos/phase5-loop.md`.
-- **Gouvernance** : le job `e2e` (Win+Linux) est désormais un **check requis** de la protection de branche `main` (ajouté après #43 via l'endpoint additif, sans toucher aux 13 checks existants) — il bloque toute future PR qui casserait la Phase 5. Dette inchangée par ailleurs : P0-scheduler D-3.3, opus/streaming chunké (Phase 7), métriques chiffrées (P2), fix génération TS `InputClientMessage`.
-- **Reprise session suivante** : **Phase 6 « Le regard »** (webcam MediaPipe + fusion tête + calibration ; pivot si < 80 % de sélections correctes).
+- **Gouvernance / dette** : le job `e2e` **n'est pas encore un check requis** de la protection de branche `main` (la PR #43 a fusionné pendant que `e2e` tournait — il a réussi mais ne bloquait pas). À ajouter aux required checks pour qu'il garde la Phase 5 sur les futures PRs. Dette inchangée par ailleurs : P0-scheduler D-3.3, opus/streaming chunké (Phase 7), métriques chiffrées (P2), fix génération TS `InputClientMessage`.
+- **Reprise session suivante** : **Phase 6 « Le regard »** (webcam MediaPipe + fusion tête + calibration ; pivot si < 80 % de sélections correctes). Avant : rendre le job `e2e` requis sur `main`.
 
 **Session 6 — 2026-06-14 — Intégration de la pile Phase 4/5 sur `main`.**
 - **Audit de reprise** : relecture en profondeur du hub assemblé (api/mod.rs, state.rs, config.rs, lib.rs, ws.rs) pour ré-ancrer l'état avant intégration ; surface montée vérifiée conforme au registre du contrat (test `mounted_routes_match_the_registry`).

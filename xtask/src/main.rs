@@ -13,6 +13,7 @@ use std::process::ExitCode;
 mod assets;
 mod contracts;
 mod eval;
+mod gaze;
 mod licenses;
 
 fn main() -> ExitCode {
@@ -62,6 +63,7 @@ fn main() -> ExitCode {
             }
             eval::run(&repo_root(), &suite)
         }
+        Some("gaze-accuracy") => gaze::run(),
         Some(other) => {
             eprintln!("xtask: unknown command `{other}`\n");
             print_usage();
@@ -86,6 +88,8 @@ fn print_usage() {
     eprintln!("                          resumable); --check validates the manifest only");
     eprintln!("  run-eval [--suite <name>]");
     eprintln!("                          build the n-gram and run the offline eval suite");
+    eprintln!("  gaze-accuracy           replay synthetic gaze sessions through the");
+    eprintln!("                          selection pipeline and gate on accuracy (T4)");
 }
 
 /// The repository root (the parent of the `xtask` crate, wherever cargo was
