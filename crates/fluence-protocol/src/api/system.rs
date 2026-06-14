@@ -173,6 +173,41 @@ pub enum LatencyClass {
     InputDecision,
 }
 
+impl LatencyClass {
+    /// Every latency class — for harnesses that iterate the full §5.A table.
+    pub const ALL: [LatencyClass; 6] = [
+        LatencyClass::NextChars,
+        LatencyClass::SuggestFirstDelta,
+        LatencyClass::SuggestComplete,
+        LatencyClass::SpeakFirstAudio,
+        LatencyClass::Turns,
+        LatencyClass::InputDecision,
+    ];
+
+    /// The contractual `(p50, p95)` budget in milliseconds (SPEC §5.A) — the
+    /// single source of truth the latency harness measures against. `provisional`
+    /// runs multiply these (PLAN §0.8); `contractual` uses them as-is on FLU-REF.
+    #[must_use]
+    pub fn budget_ms(self) -> (f64, f64) {
+        match self {
+            Self::NextChars => (20.0, 50.0),
+            Self::SuggestFirstDelta => (300.0, 600.0),
+            Self::SuggestComplete => (1_200.0, 2_500.0),
+            Self::SpeakFirstAudio => (200.0, 400.0),
+            Self::Turns => (100.0, 250.0),
+            Self::InputDecision => (5.0, 15.0),
+        }
+    }
+
+    /// Whether measuring this class needs the LLM/voice model loaded. The input
+    /// decision is the only model-free realtime class, so it is the one a
+    /// model-less CI can gate; the rest are measured on FLU-REF (contractual).
+    #[must_use]
+    pub fn requires_model(self) -> bool {
+        !matches!(self, Self::InputDecision)
+    }
+}
+
 /// `GET /system/capabilities` — what this installation can do
 /// (hardware tier §3, available features).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -228,6 +263,19 @@ pub struct AccessJournalEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn latency_budgets_are_positive_ordered_and_complete() {
+        assert_eq!(LatencyClass::ALL.len(), 6);
+        for class in LatencyClass::ALL {
+            let (p50, p95) = class.budget_ms();
+            assert!(p50 > 0.0 && p95 > 0.0, "{class:?} budget must be positive");
+            assert!(p50 <= p95, "{class:?} p50 must not exceed p95");
+        }
+        // The input decision is the one model-free realtime class.
+        assert!(!LatencyClass::InputDecision.requires_model());
+        assert!(LatencyClass::SuggestComplete.requires_model());
+    }
 
     #[test]
     fn degraded_event_wire_format() {

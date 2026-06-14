@@ -15,6 +15,7 @@ mod contracts;
 mod eval;
 mod gaze;
 mod gaze_assets;
+mod latency;
 mod licenses;
 mod models;
 
@@ -77,6 +78,17 @@ fn main() -> ExitCode {
             eval::run(&repo_root(), &suite)
         }
         Some("gaze-accuracy") => gaze::run(),
+        Some("latency") => {
+            let contractual = match args.next().as_deref() {
+                Some("--contractual") => true,
+                None => false,
+                Some(other) => {
+                    eprintln!("xtask latency: unknown flag `{other}` (only --contractual)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            latency::run(contractual)
+        }
         Some("models-gc") => {
             let apply = match args.next().as_deref() {
                 Some("--apply") => true,
@@ -117,6 +129,8 @@ fn print_usage() {
     eprintln!("                          build the n-gram and run the offline eval suite");
     eprintln!("  gaze-accuracy           replay synthetic gaze sessions through the");
     eprintln!("                          selection pipeline and gate on accuracy (T4)");
+    eprintln!("  latency [--contractual] measure §5.A latency budgets and gate them");
+    eprintln!("                          (provisional ×2.5 in CI; contractual on FLU-REF)");
     eprintln!("  models-gc [--apply]     reclaim cached model files the manifest no");
     eprintln!("                          longer references; --apply deletes (else dry-run)");
 }

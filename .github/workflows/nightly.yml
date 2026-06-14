@@ -56,6 +56,21 @@ jobs:
       - name: Replay synthetic gaze sessions and publish the accuracy (Phase 6)
         run: cargo run --release -p xtask -- gaze-accuracy | tee -a "$GITHUB_STEP_SUMMARY"
 
+  latency:
+    name: latency budgets (provisional)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      # Gates the model-free realtime class (input decision) against §5.A × 2.5
+      # (PLAN §0.8). The model-dependent classes are measured `--contractual` on
+      # the FLU-REF reference machine.
+      - name: Measure and gate input-decision latency
+        run: cargo run --release -p xtask -- latency | tee -a "$GITHUB_STEP_SUMMARY"
+
   soak:
     name: extended soak (kill cycles, RSS bounded)
     runs-on: ubuntu-latest
