@@ -1,0 +1,5 @@
+# Tauri build outputs and generated assets (recreated by the build).
+/target
+/gen
+/binaries
+/icons

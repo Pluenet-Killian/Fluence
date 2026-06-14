@@ -6,24 +6,27 @@ et le fusionne, puis le dwell sélectionne — exactement le pipeline `fluence-i
 testé. Le regard est **opt-in** : par défaut le composeur reste à la souris/dwell
 (et la suite e2e T5 n'y touche pas).
 
-## Provisionnement offline (comme Piper)
+## Provisionnement offline — **une commande**
 
 Le projet est **100 % offline** (SPEC §1) : le WASM MediaPipe et le modèle
 `face_landmarker.task` se chargent depuis des chemins **locaux**, jamais un CDN.
-Ils ne sont **pas** versionnés (binaires lourds) — à provisionner une fois :
+Après `pnpm install` (qui apporte le WASM dans `node_modules`) :
+
+```bash
+cargo xtask download-gaze-assets        # --check valide le manifeste sans réseau
+```
+
+Cela télécharge le modèle (**sha256-vérifié**, manifeste `models/gaze-assets.json`,
+même contrat d'intégrité que les modèles de test) et copie le WASM, dans :
 
 ```
 apps/web-client/public/
-  mediapipe/wasm/          # @mediapipe/tasks-vision WASM (vision_wasm_*.{js,wasm})
+  mediapipe/wasm/               # @mediapipe/tasks-vision WASM (vision_wasm_*.{js,wasm})
   models/face_landmarker.task   # le modèle face-landmarker (≈ 3,8 Mo)
 ```
 
-Sources : le dossier `wasm/` est livré dans le paquet
-`node_modules/@mediapipe/tasks-vision/wasm/` (copier dans `public/mediapipe/wasm/`) ;
-le modèle se télécharge depuis la page officielle MediaPipe Face Landmarker. Les
-chemins sont configurables (`GazeSourceOptions.wasmPath` / `modelPath`).
-
-Ces dossiers sont git-ignorés (`apps/web-client/.gitignore`).
+Ces dossiers sont git-ignorés (`apps/web-client/.gitignore`) ; les chemins runtime
+sont configurables (`GazeSourceOptions.wasmPath` / `modelPath`).
 
 ## Utiliser le regard
 

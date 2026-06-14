@@ -1,0 +1,15 @@
+{
+  "$comment": "Pinned offline gaze assets for the webcam composer (Phase 6, provisioned for phase-6-done; D-3.2). 100% offline (SPEC §1): the MediaPipe model is downloaded once and sha256-verified, then served by the hub from apps/web-client/public/ — never a CDN at runtime. The WASM ships in the @mediapipe/tasks-vision npm package and is copied by `cargo xtask download-gaze-assets`.",
+  "version": 1,
+  "models": [
+    {
+      "id": "face-landmarker",
+      "file": "face_landmarker.task",
+      "license": "Apache-2.0",
+      "purpose": "MediaPipe Face Landmarker (478 landmarks incl. iris) — webcam gaze estimation in the composer (SPEC §4).",
+      "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "bytes": 3758596
+    }
+  ]
+}

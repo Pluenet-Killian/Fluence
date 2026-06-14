@@ -37,7 +37,7 @@ const CHUNK: usize = 64 * 1024;
 
 /// What `ensure_model` did.
 #[derive(Debug, PartialEq, Eq)]
-enum Outcome {
+pub(crate) enum Outcome {
     /// Already cached and the hash matched: nothing to do.
     AlreadyValid,
     /// Freshly downloaded (or resumed) and verified.
@@ -169,7 +169,11 @@ pub(crate) fn models_dir(repo_root: &Path) -> PathBuf {
 
 /// Ensures `model` is present in `dir` and matches its sha256, downloading
 /// (or resuming) if needed.
-fn ensure_model(model: &ModelEntry, dir: &Path, agent: &ureq::Agent) -> Result<Outcome, String> {
+pub(crate) fn ensure_model(
+    model: &ModelEntry,
+    dir: &Path,
+    agent: &ureq::Agent,
+) -> Result<Outcome, String> {
     let dest = dir.join(&model.file);
     if dest.exists() {
         match sha256_file(&dest) {
