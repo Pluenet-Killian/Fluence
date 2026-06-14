@@ -5,6 +5,34 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
+## Durcissement — passe d'audit adversarial (Phase 7.7, 2026-06-14)
+
+### Corrigé
+
+- **Sécurité** : la comparaison du code d'appairage est désormais **à temps
+  constant** (plus de canal auxiliaire temporel révélant combien de chiffres
+  correspondent ; défense en profondeur au-dessus du verrou à 5 tentatives).
+- **Fiabilité (urgence)** : le composeur ne **désarme l'urgence qu'après**
+  confirmation du hub ; en cas d'échec, il reste armé pour réessayer et signale
+  l'erreur — il ne prétend jamais l'avoir envoyée.
+- **Fiabilité** : `Composer.close()` annule tous les timers (dont le timer de
+  reconnexion désormais mémorisé), interrompt la suggestion en cours et ferme la
+  socket — plus de boucle de reconnexion orpheline.
+- **Robustesse** : le SDK ignore une frame SSE mal formée au lieu de lever et de
+  tuer le générateur de suggestions.
+- **Robustesse** : la calibration ridge rejette les features/cibles non finies
+  (NaN/Inf) en amont — une frame capteur corrompue ne peut pas empoisonner le
+  mapping.
+- **Honnêteté (PLAN §0.8)** : `measure.py` **refuse** de mesurer sans split TEST
+  gelé (remplace un repli silencieux train=test qui gonflait la baseline n-gram).
+
+### Méthode
+
+- Revue adversariale en 4 domaines (moteur regard, sécurité/fiabilité hub,
+  client/SDK/e2e, ML/contrats/CI). Faux positifs écartés avec justification : le
+  broadcast est un ring borné (256), `TargetMap` est borné par la limite de corps
+  (512 KiB), la fuite P0 du draft est déjà couverte par un kill-test.
+
 ## Phase 6 — Le regard (moteur + gate d'exactitude — en cours, 2026-06-14)
 
 ### Ajouté
