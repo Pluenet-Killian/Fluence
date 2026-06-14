@@ -19,7 +19,9 @@
 //! death, and the autosave rate (≤ 2 writes/s) makes fsync cost invisible.
 
 mod actor;
+mod backup;
 mod key;
+mod recovery;
 mod schema;
 mod types;
 
@@ -28,7 +30,9 @@ use std::path::PathBuf;
 use secrecy::SecretString;
 use tokio::sync::{mpsc, oneshot};
 
+pub use backup::{back_up, restore};
 pub use key::KeySource;
+pub use recovery::{RecoveryError, RecoverySecret};
 pub use types::{AccessEntry, DeviceRecord, DraftRecord, DraftWrite, NewAccessEntry, NewDevice};
 
 use actor::Command;
@@ -215,6 +219,19 @@ impl Store {
             reply,
         })
         .await
+    }
+
+    /// Erases all personal content (drafts + profiles) and reclaims the freed
+    /// pages (SPEC §9.A «&nbsp;oubli&nbsp;»). Returns the number of rows
+    /// removed — metadata, never P0. Devices and the access journal are kept;
+    /// a full factory reset is removing the data directory at the operator
+    /// level. To back data up first, see [`crate::back_up`].
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError`] on database failure or closed store.
+    pub async fn purge_content(&self) -> Result<u64, StoreError> {
+        self.call(|reply| Command::PurgeContent { reply }).await
     }
 
     /// Appends an access-journal entry (metadata only — never P0).
