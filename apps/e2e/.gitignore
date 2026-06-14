@@ -1,0 +1,6 @@
+# Playwright artifacts (traces, videos, reports) — never committed.
+/test-results/
+/playwright-report/
+/blob-report/
+/demo-output/
+/.cache/

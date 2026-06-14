@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { SuggestionGate } from "./antiflicker.js";
 import { normalizePoint } from "./coords.js";
-import { allKeys, BACKSPACE, buildTargetMap, KEY_ROWS, type MeasuredKey } from "./keyboard.js";
+import {
+  allKeys,
+  BACKSPACE,
+  buildTargetMap,
+  KEY_ROWS,
+  targetsPatchFrame,
+  type MeasuredKey,
+} from "./keyboard.js";
 import { UsageMeter } from "./metrics.js";
 
 describe("normalizePoint", () => {
@@ -65,6 +72,23 @@ describe("keyboard layout", () => {
     expect(map.viewport).toEqual({ w: 800, h: 600 });
     expect(map.targets[0]?.id).toBe("key_e");
     expect(map.targets[0]?.rect).toEqual([0, 0, 50, 50]);
+  });
+
+  it("wraps a target map as an input targets.patch wire frame (live-engine seeding)", () => {
+    const map = buildTargetMap("main", { w: 800, h: 600 }, [
+      { id: "key_e", label: "e", role: "key", rect: [0, 0, 50, 50] },
+    ]);
+    const frame = targetsPatchFrame(map);
+    // The exact wire shape the hub deserializes as InputClientMessage::TargetsPatch
+    // (k tag, then apply_patch upserts these targets onto the live engine).
+    expect(frame.topic).toBe("input");
+    expect(frame.msg.k).toBe("targets.patch");
+    expect(frame.msg.surface).toBe("main");
+    expect(frame.msg.viewport).toEqual({ w: 800, h: 600 });
+    expect(frame.msg.upsert).toEqual(map.targets);
+    expect(frame.msg.remove).toEqual([]);
+    // It must round-trip through JSON unchanged (sent via socket.send(JSON…)).
+    expect(JSON.parse(JSON.stringify(frame))).toEqual(frame);
   });
 });
 

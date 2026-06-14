@@ -5,6 +5,12 @@ target/
 .venv/
 pnpm-lock.yaml
 
+# Artefacts Playwright (traces, vidéos, rapports, .last-run.json) : générés.
+**/test-results/
+**/playwright-report/
+**/blob-report/
+**/demo-output/
+
 # Générés par cargo xtask check-contracts : leur forme canonique est celle
 # du générateur, vérifiée par --check — prettier n'y touche pas.
 schemas/

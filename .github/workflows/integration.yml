@@ -1,7 +1,7 @@
 # Intégration — T4 (hub réel + workers, kill-tests) et T5 (E2E Playwright).
-# Les vrais tests T4 arrivent en Phase 2 (kill-tests) et T5 en Phase 5.
-# Phase 0 : smoke release cross-OS — le workspace entier compile en release
-# et le binaire xtask fonctionne, préfigurant le pipeline T4.
+# Les kill-tests T4 tournent dans ci.yml (cargo test --workspace) ; ce workflow
+# porte le smoke release cross-OS et la suite T5 « personas » : le vrai composeur
+# web contre le hub assemblé (n-gram fallback + voix OS), sans modèle lourd.
 name: integration
 
 on:
@@ -37,3 +37,48 @@ jobs:
         run: cargo build --workspace --release
       - name: xtask runs from a release build
         run: cargo run --release --package xtask -- check-licenses
+
+  e2e:
+    name: e2e personas T5 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Install NASM (Windows, vendored OpenSSL)
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the assembled hub (release)
+        run: cargo build --release -p fluence-hub
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web composer (PWA the hub serves)
+        run: pnpm --filter @fluence/web-client build
+      - name: Install espeak-ng (Linux OS fallback voice)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y espeak-ng
+      - name: Install Playwright Chromium
+        run: pnpm --filter @fluence/e2e exec playwright install --with-deps chromium
+      - name: Run the T5 persona suite
+        run: pnpm --filter @fluence/e2e run e2e
+        env:
+          CI: "true"
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          retention-days: 7

@@ -308,7 +308,9 @@ mod tests {
         assert_eq!(parsed, vec![Topic::Input, Topic::System]);
     }
 
-    use fluence_protocol::input::{PointerSample, Target, TargetMap, TargetRole, Viewport};
+    use fluence_protocol::input::{
+        PointerSample, Target, TargetMap, TargetMapPatch, TargetRole, Viewport,
+    };
 
     fn full_surface() -> TargetMap {
         TargetMap {
@@ -358,6 +360,49 @@ mod tests {
             }
         }
         assert!(committed, "a sustained dwell must publish a commit event");
+    }
+
+    #[tokio::test]
+    async fn a_targets_patch_seeds_the_live_engine_so_a_later_dwell_commits() {
+        // The path the web composer relies on (PLAN 5.1): instead of depending
+        // on the `PUT /input/targets` snapshot winning a race against the `/ws`
+        // upgrade, the UI seeds *this* connection's engine by sending a
+        // `targets.patch` frame on its own socket, in order, before any pointer
+        // sample. `relay_input` applies it; a later sustained dwell then commits.
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        // A fresh engine with NO targets — exactly what `serve` builds when the
+        // hub's snapshot is still empty. Without seeding, pointers hit nothing.
+        let mut engine = SelectionEngine::new(DwellConfig::default());
+
+        let map = full_surface();
+        let patch = InputClientMessage::TargetsPatch(TargetMapPatch {
+            surface: map.surface.clone(),
+            viewport: Some(map.viewport),
+            upsert: map.targets.clone(),
+            remove: Vec::new(),
+        });
+        relay_input(&mut engine, &patch, Duration::ZERO, &bus);
+
+        // A sustained dwell on the just-seeded target must now commit.
+        relay_input(&mut engine, &pointer_at(0.5, 0.5), Duration::ZERO, &bus);
+        relay_input(
+            &mut engine,
+            &pointer_at(0.5, 0.5),
+            Duration::from_millis(900),
+            &bus,
+        );
+
+        let mut committed = false;
+        while let Ok(frame) = receiver.try_recv() {
+            if matches!(frame, ServerFrame::Input(SelectionEvent::Commit { .. })) {
+                committed = true;
+            }
+        }
+        assert!(
+            committed,
+            "a targets.patch over the ws must seed the engine so a later dwell commits"
+        );
     }
 
     #[tokio::test]

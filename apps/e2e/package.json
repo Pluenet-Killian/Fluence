@@ -1,0 +1,19 @@
+{
+  "name": "@fluence/e2e",
+  "version": "0.0.0",
+  "description": "Fluence end-to-end persona suite (T5): the real web composer against the assembled hub (PLAN §1 T5, SPEC §7.A)",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "demo": "playwright test --config playwright.demo.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0"
+  }
+}
