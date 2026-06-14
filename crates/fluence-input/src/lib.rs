@@ -20,6 +20,7 @@
 //! sample counts as a fixation.
 
 mod fixation;
+mod fusion;
 mod geometry;
 mod one_euro;
 
@@ -29,6 +30,10 @@ use fluence_protocol::Normalized;
 use fluence_protocol::input::{CommitMethod, Target, TargetMap, TargetMapPatch, Viewport};
 
 pub use fixation::{GazeState, IvtClassifier, IvtConfig};
+pub use fusion::{
+    FusionConfig, Magnet, MagnetismConfig, NoiseModel, apply_magnetism, fuse_confidence_weighted,
+    head_affine,
+};
 pub use geometry::hit_test;
 pub use one_euro::{OneEuro, OneEuro2D, OneEuroConfig};
 
