@@ -7,7 +7,8 @@
 //!   restart with backoff, restart counter exposed;
 //! - hub killed (-9) mid-typing → on restart the draft is restored with
 //!   ≤ 1 s of loss, measured by keystroke timestamps;
-//! - 50 kill/restart worker cycles → hub RSS stable (±10 %);
+//! - kill/restart worker cycles (soak proxy, `FLUENCE_SOAK_CYCLES`) → hub RSS
+//!   bounded (< +10 % after warm-up);
 //! - boot → ready < 3 s (provisional ×2.5 on CI runners — PLAN §0.8);
 //! - hub logs never contain draft content (P0, end to end).
 
@@ -18,6 +19,11 @@ use std::time::{Duration, Instant};
 
 /// Provisional multiplier on contractual budgets (PLAN §0.8).
 const PROVISIONAL: f64 = 2.5;
+
+/// Warm-up cycles before the RSS baseline in the soak proxy: the allocator and
+/// OS caches reach steady state over the first few respawns, so a cold baseline
+/// would inflate the growth ratio (a measurement artefact, not a leak).
+const SOAK_WARMUP_CYCLES: u64 = 5;
 
 /// Waits until the hub has written its port file and answers `/pair/info`,
 /// returning the bound port. Panics past `timeout` (the test has failed).
@@ -415,32 +421,48 @@ fn flush_stays_bounded_under_a_flood_of_dirty_sessions() {
 }
 
 #[test]
-fn fifty_kill_cycles_leave_rss_stable() {
+fn kill_cycles_keep_rss_bounded() {
+    // A soak proxy (PLAN 7.6): many supervised-worker kill/restart cycles must
+    // not leak — the hub RSS stays bounded. `FLUENCE_SOAK_CYCLES` scales the
+    // measured count (default 50; the nightly extended soak sets it far higher);
+    // the 72 h one-shot is a separate, physical run on FLU-REF (docs/ops/soak.md).
     let dir = tempfile::tempdir().expect("tempdir");
     let (hub, _boot) = HubProcess::spawn(dir.path(), true);
-
-    // Settle to ready once, measure the baseline.
     wait_for_worker_ready(&hub, 0, Duration::from_secs(10));
+
+    let measured: u64 = std::env::var("FLUENCE_SOAK_CYCLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50);
+
+    // Warm up before the baseline (see SOAK_WARMUP_CYCLES) so the ratio reflects
+    // a real leak, not cold-start growth.
+    let mut cycle = 0u64;
+    let run_cycles = |hub: &HubProcess, count: u64, cycle: &mut u64| {
+        for _ in 0..count {
+            let pid = read_worker_pid(&hub.data_dir)
+                .unwrap_or_else(|| panic!("worker pid at cycle {cycle}"));
+            kill_pid(pid);
+            *cycle += 1;
+            // Each kill increments the restart counter; wait for the respawn to
+            // reach ready again (down → backoff → respawn → ready).
+            wait_for_worker_ready(hub, *cycle, Duration::from_secs(20));
+        }
+    };
+
+    run_cycles(&hub, SOAK_WARMUP_CYCLES, &mut cycle);
     let baseline = hub.rss();
     assert!(baseline > 0, "rss readable");
-
-    for cycle in 0..50u64 {
-        let pid =
-            read_worker_pid(&hub.data_dir).unwrap_or_else(|| panic!("worker pid at cycle {cycle}"));
-        kill_pid(pid);
-        // Each kill increments the restart counter; wait for the respawn
-        // to reach ready again (down → backoff → respawn → ready).
-        wait_for_worker_ready(&hub, cycle + 1, Duration::from_secs(20));
-    }
-
+    run_cycles(&hub, measured, &mut cycle);
     let final_rss = hub.rss();
+
     // RSS in bytes is far below f64's 2^53 exact-integer ceiling, so this
     // ratio is exact in practice.
     #[allow(clippy::cast_precision_loss)]
     let ratio = final_rss as f64 / baseline as f64;
     assert!(
         ratio < 1.10,
-        "RSS grew {:.1}% over 50 cycles (baseline {baseline}, final {final_rss})",
+        "RSS grew {:.1}% over {measured} post-warmup cycles (baseline {baseline}, final {final_rss})",
         (ratio - 1.0) * 100.0
     );
 }
