@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "DeviceInfo": {
+      "description": "One paired device as the caregiver sees it.",
+      "properties": {
+        "created_at": {
+          "description": "Pairing time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable device id (the handle for revocation).",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/DeviceKind",
+          "description": "Device kind."
+        },
+        "name": {
+          "description": "Human name chosen at pairing (« Tablette du lit »).",
+          "type": "string"
+        },
+        "revoked_at": {
+          "description": "Revocation time, if revoked — a revoked device stays listed (greyed out),\nit is not silently dropped, so the caregiver keeps a full picture.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope",
+          "description": "Granted scope."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "scope",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "DeviceKind": {
+      "description": "Kind of device requesting pairing — drives naming and display in the\ncaregiver space. Unknown kinds are tolerated.",
+      "oneOf": [
+        {
+          "const": "desktop",
+          "description": "Desktop or laptop computer.",
+          "type": "string"
+        },
+        {
+          "const": "tablet",
+          "description": "Tablet.",
+          "type": "string"
+        },
+        {
+          "const": "phone",
+          "description": "Phone.",
+          "type": "string"
+        },
+        {
+          "const": "display",
+          "description": "Dedicated partner-facing display.",
+          "type": "string"
+        },
+        {
+          "const": "cli",
+          "description": "Command-line tool.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Kind added by a newer client.",
+          "type": "string"
+        }
+      ]
+    },
+    "Scope": {
+      "description": "Access scope of a device token (SPEC §2.A scope table).",
+      "oneOf": [
+        {
+          "const": "display",
+          "description": "Text to display, speech state — read only (partner-facing screen).",
+          "type": "string"
+        },
+        {
+          "const": "control",
+          "description": "Full composer, suggestions, TTS, input (the user's devices).",
+          "type": "string"
+        },
+        {
+          "const": "care",
+          "description": "Configuration, memory per ACL, diagnostics (caregiver).",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "Everything (embedded UI and local CLI only).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /devices` — every paired device, revoked included (caregiver space).",
+  "properties": {
+    "devices": {
+      "description": "Paired devices, oldest first.",
+      "items": {
+        "$ref": "#/$defs/DeviceInfo"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "devices"
+  ],
+  "title": "DeviceList",
+  "type": "object"
+}

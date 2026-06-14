@@ -121,6 +121,11 @@ pub const MOUNTED: &[MountedRoute] = &[
         scopes: &[Scope::Care],
     },
     MountedRoute {
+        method: "get",
+        path: "/api/v1/devices",
+        scopes: &[Scope::Care],
+    },
+    MountedRoute {
         method: "delete",
         path: "/api/v1/devices/{id}",
         scopes: &[Scope::Care],
@@ -186,6 +191,7 @@ pub fn build_router(state: AppState) -> Router {
     // SPEC §2.A/§7.C).
     let care = Router::new()
         .route("/api/v1/system/journal", get(system::journal))
+        .route("/api/v1/devices", get(devices::list))
         .route("/api/v1/devices/{id}", delete(devices::revoke))
         .route_layer(axum::middleware::from_fn(auth::require_scope(&[
             Scope::Care,

@@ -4,13 +4,41 @@
 //! token. Listing arrives with the caregiver UI; revocation is the security
 //! primitive — a lost or compromised device is cut off immediately.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use fluence_protocol::api::devices::{DeviceInfo, DeviceList};
 use fluence_protocol::error::ErrorCode;
 
 use crate::api::problem_response;
 use crate::state::AppState;
+
+/// `GET /api/v1/devices` (care scope): lists every paired device, revoked
+/// included, oldest first. **No token, ever** — only metadata the caregiver
+/// needs to recognise and, if needed, revoke a device.
+pub async fn list(State(state): State<AppState>) -> Response {
+    match state.store().list_devices().await {
+        Ok(devices) => {
+            let devices = devices
+                .into_iter()
+                .map(|d| DeviceInfo {
+                    id: d.device_id,
+                    name: d.name,
+                    kind: d.kind,
+                    scope: d.scope,
+                    created_at: d.created_at,
+                    revoked_at: d.revoked_at,
+                })
+                .collect();
+            Json(DeviceList { devices }).into_response()
+        }
+        Err(error) => {
+            tracing::error!(%error, "device list failed");
+            problem_response(ErrorCode::Internal, None)
+        }
+    }
+}
 
 /// `DELETE /api/v1/devices/{id}` (care scope): revokes the device's token.
 ///
@@ -97,5 +125,50 @@ mod tests {
         let state = test_state(&dir).await;
         let status = revoke(State(state), Path("does-not-exist".to_owned())).await;
         assert_eq!(status.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn list_returns_devices_with_metadata_and_revocation_state() {
+        use axum::body::to_bytes;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = test_state(&dir).await;
+        for (id, name) in [("dev-1", "tablette"), ("dev-2", "portable")] {
+            state
+                .store()
+                .insert_device(NewDevice {
+                    device_id: id.to_owned(),
+                    token_hash: auth::token_hash(&format!("tok-{id}")),
+                    name: name.to_owned(),
+                    kind: DeviceKind::Tablet,
+                    scope: Scope::Control,
+                })
+                .await
+                .expect("insert");
+        }
+        state
+            .store()
+            .revoke_device("dev-2".to_owned())
+            .await
+            .expect("revoke");
+
+        let response = list(State(state)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let list: DeviceList = serde_json::from_slice(&bytes).expect("DeviceList json");
+
+        assert_eq!(list.devices.len(), 2);
+        let revoked: Vec<_> = list
+            .devices
+            .iter()
+            .filter(|d| d.revoked_at.is_some())
+            .collect();
+        assert_eq!(revoked.len(), 1, "the revoked device stays listed");
+        assert_eq!(revoked[0].id, "dev-2");
+        // No token field exists on the wire type — only metadata is exposed.
+        let raw = String::from_utf8(bytes.to_vec()).expect("utf8");
+        assert!(!raw.contains("token"), "no token in the device list");
     }
 }
