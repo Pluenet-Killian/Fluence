@@ -77,11 +77,12 @@ mod os {
 
     #[cfg(windows)]
     pub fn synthesize(text: &str) -> Result<Vec<u8>, VoiceError> {
-        let wav = tempfile::Builder::new()
-            .suffix(".wav")
-            .tempfile()
-            .map_err(|err| VoiceError::Synthesis(format!("temp file: {err}")))?;
-        let path = wav.path().to_owned();
+        // A temp *directory* with a path inside — not a `NamedTempFile`, whose
+        // still-open handle makes SAPI's `SetOutputToWaveFile` write nothing on
+        // Windows (a silent 0-byte WAV). The external process owns the file.
+        let dir =
+            tempfile::tempdir().map_err(|err| VoiceError::Synthesis(format!("temp dir: {err}")))?;
+        let path = dir.path().join("voice.wav");
         // SetOutputToWaveFile takes a path (not P0); the text arrives on stdin.
         let script = format!(
             "Add-Type -AssemblyName System.Speech; \
@@ -113,11 +114,11 @@ mod os {
 
     #[cfg(unix)]
     pub fn synthesize(text: &str) -> Result<Vec<u8>, VoiceError> {
-        let wav = tempfile::Builder::new()
-            .suffix(".wav")
-            .tempfile()
-            .map_err(|err| VoiceError::Synthesis(format!("temp file: {err}")))?;
-        let path = wav.path().to_owned();
+        // A temp *directory* + an inner path (not a `NamedTempFile`): uniform
+        // with the Windows path, and the external writer owns the file.
+        let dir =
+            tempfile::tempdir().map_err(|err| VoiceError::Synthesis(format!("temp dir: {err}")))?;
+        let path = dir.path().join("voice.wav");
         let mut command = std::process::Command::new("espeak-ng");
         command
             .arg("-v")
@@ -188,5 +189,30 @@ mod tests {
         } else {
             assert!(voices.is_empty());
         }
+    }
+
+    /// On a host whose OS voice is available, synthesis must yield a real,
+    /// non-empty WAV — never a 200-with-0-bytes "silent voice" (« une voix,
+    /// toujours », SPEC §2.C). Skipped where no OS voice exists (e.g. a headless
+    /// Linux runner without `espeak-ng`), so it asserts only where it can.
+    #[test]
+    fn an_available_os_voice_emits_a_nonempty_wav() {
+        if !SystemVoiceBackend::available() {
+            return;
+        }
+        let wav = SystemVoiceBackend::new()
+            .synthesize("bonjour", SYSTEM_VOICE_ID, None)
+            .expect("an available OS voice must synthesize")
+            .wav;
+        assert!(
+            wav.len() > 44,
+            "OS voice produced {} bytes — expected a WAV past the 44-byte header",
+            wav.len()
+        );
+        assert_eq!(
+            &wav[0..4],
+            b"RIFF",
+            "OS voice output is not a RIFF/WAVE file"
+        );
     }
 }
