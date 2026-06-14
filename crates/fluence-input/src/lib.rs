@@ -22,6 +22,7 @@
 mod calibration;
 mod fixation;
 mod fusion;
+mod gaze;
 mod geometry;
 mod one_euro;
 
@@ -38,6 +39,7 @@ pub use fusion::{
     FusionConfig, Magnet, MagnetismConfig, NoiseModel, apply_magnetism, fuse_confidence_weighted,
     head_affine,
 };
+pub use gaze::{GazeConfig, GazePipeline};
 pub use geometry::hit_test;
 pub use one_euro::{OneEuro, OneEuro2D, OneEuroConfig};
 
@@ -113,6 +115,7 @@ pub enum SelectionUpdate {
 }
 
 /// Where the engine's attention currently is.
+#[derive(Debug)]
 enum FocusState {
     /// Nothing focused.
     Idle,
@@ -129,6 +132,7 @@ enum FocusState {
 /// The hub-side selection engine for one surface (SPEC §4.A, stage 2): it holds
 /// the declared targets, hit-tests normalized pointer samples, and runs the
 /// dwell state machine. See the crate docs for the clock-free contract.
+#[derive(Debug)]
 pub struct SelectionEngine {
     config: DwellConfig,
     viewport: Viewport,
@@ -280,6 +284,57 @@ impl SelectionEngine {
                 Vec::new()
             }
         }
+    }
+
+    /// Advances the engine clock without processing a sample: the dwell is
+    /// **paused, not cancelled** (SPEC §4.C — a saccade holds the gauge, a loss
+    /// pauses it softly). The held interval is excluded from the next sample's
+    /// dwell accumulation, so a brief saccade never counts as fixation time.
+    pub fn hold(&mut self, now: Duration) {
+        let _ = self.tick(now);
+    }
+
+    /// The current targets as magnets — centres in normalized surface coordinates
+    /// with their linguistic priors — for [`apply_magnetism`]. Empty until targets
+    /// and a non-degenerate viewport are set.
+    #[must_use]
+    pub fn magnets(&self) -> Vec<Magnet> {
+        let (w, h) = (f64::from(self.viewport.w), f64::from(self.viewport.h));
+        if w <= 0.0 || h <= 0.0 {
+            return Vec::new();
+        }
+        self.targets
+            .iter()
+            .map(|target| Magnet {
+                center: (
+                    (target.rect.x + target.rect.w / 2.0) / w,
+                    (target.rect.y + target.rect.h / 2.0) / h,
+                ),
+                prior: target.prior.map_or(0.0, Normalized::get),
+            })
+            .collect()
+    }
+
+    /// Hit-tests a normalized point against the current targets (the same test
+    /// the dwell uses), returning the target under it, if any.
+    #[must_use]
+    pub fn hit(&self, x: f64, y: f64) -> Option<&Target> {
+        hit_test(self.viewport, &self.targets, x, y)
+    }
+
+    /// The normalized centre of target `id`, if it is on the current surface.
+    #[must_use]
+    pub fn target_center(&self, id: &fluence_protocol::TargetId) -> Option<(f64, f64)> {
+        let (w, h) = (f64::from(self.viewport.w), f64::from(self.viewport.h));
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        self.targets.iter().find(|t| &t.id == id).map(|t| {
+            (
+                (t.rect.x + t.rect.w / 2.0) / w,
+                (t.rect.y + t.rect.h / 2.0) / h,
+            )
+        })
     }
 
     /// Starts dwelling on `id`, emitting Focus and a zero-progress Dwell.
