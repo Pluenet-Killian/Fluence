@@ -48,17 +48,23 @@ définis en SPEC D-12.2).
   à travers le vrai pipeline et score le % de cibles correctes (`replay`) ;
   `cargo xtask gaze-accuracy` rejoue des sessions **synthétiques** et **publie la
   précision en nightly** (`nightly.yml`), avec gate de non-régression à 0,95.
+- **Câblage hub/contrat du regard** : `InputClientMessage` gagne `cal.sample`
+  (paire regard brut → cible) et `cal.fit` (variantes struct, tag `k` conservé) ;
+  le `/ws` fait tourner un `GazePipeline` par connexion et **route les pointeurs
+  par source** — `gaze:…` à travers calibration+fusion+dwell, `mouse:…`
+  directement au moteur de dwell (chemin souris **inchangé**, e2e vert). Tests
+  hub déterministes (regard calibré → commit ; non calibré → rien).
 
 ### Vérifié
 
-- 47 tests `fluence-input` (réponses One Euro, segmentation I-VT exacte, cap
-  magnétisme par property test, récupération affine + dérive de calibration,
-  pipeline dwell/saccade, replay) ; `xtask gaze-accuracy` 100 % synthétique.
+- 47 tests `fluence-input` + tests hub regard (calibré/non-calibré) ; chemin
+  souris préservé (tests dwell/targets.patch + suite T5 e2e verts) ; contrats
+  régénérés (goldens/openapi/api.d.ts), spectral 0 erreur. `xtask gaze-accuracy`
+  100 % synthétique.
 
 ### Reste (pour `phase-6-done`)
 
-- Câblage hub/contrat (regard → `GazePipeline` par connexion + calibration), source
-  regard MediaPipe du composeur, outil `record-gaze`, **session webcam réelle**
+- Source regard MediaPipe du composeur, outil `record-gaze`, **session webcam réelle**
   (action physique). Honnêteté : les datasets nightly sont **synthétiques** (gate
   de correction), pas une revendication de précision réelle. ML-regard (6.5) =
   post-A1 par conception.
