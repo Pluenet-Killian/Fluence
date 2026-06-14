@@ -22,6 +22,7 @@ import type {
 
 import { SuggestionGate } from "./antiflicker.js";
 import { h } from "./dom.js";
+import { GazeController, type GazeTarget } from "./gaze-controller.js";
 import { normalizePoint } from "./coords.js";
 import { t } from "./i18n.js";
 import {
@@ -75,7 +76,11 @@ export class Composer {
   #bannerEl!: HTMLElement;
   #emergencyBtn!: HTMLButtonElement;
   #emergencyCancelBtn!: HTMLButtonElement;
+  #gazeBtn!: HTMLButtonElement;
+  #calibrateBtn!: HTMLButtonElement;
+  #recordBtn!: HTMLButtonElement;
   #suggestionEls: HTMLButtonElement[] = [];
+  #gaze: GazeController | null = null;
 
   constructor(client: FluenceClient, root: HTMLElement) {
     this.#client = client;
@@ -146,10 +151,33 @@ export class Composer {
     this.#emergencyCancelBtn.addEventListener("click", () => {
       this.#disarmEmergency();
     });
+
+    // Gaze mode (opt-in, SPEC §4): off by default, so the mouse path — and the
+    // T5 e2e suite — are untouched. Calibrate/record appear once gaze is on.
+    this.#gazeBtn = h("button", { class: "gaze", type: "button" }, [t("compose.gaze")]);
+    this.#gazeBtn.addEventListener("click", () => {
+      void this.#toggleGaze();
+    });
+    this.#calibrateBtn = h("button", { class: "calibrate", type: "button", hidden: "" }, [
+      t("compose.calibrate"),
+    ]);
+    this.#calibrateBtn.addEventListener("click", () => {
+      void this.#calibrateGaze();
+    });
+    this.#recordBtn = h("button", { class: "record", type: "button", hidden: "" }, [
+      t("compose.record"),
+    ]);
+    this.#recordBtn.addEventListener("click", () => {
+      void this.#recordGaze();
+    });
+
     const actions = h("div", { class: "actions" }, [
       speakBtn,
       this.#emergencyBtn,
       this.#emergencyCancelBtn,
+      this.#gazeBtn,
+      this.#calibrateBtn,
+      this.#recordBtn,
     ]);
 
     this.#root.replaceChildren(
@@ -327,6 +355,8 @@ export class Composer {
     this.#emergencyTimer = null;
     this.#reconnectTimer = null;
     this.#suggestAbort?.abort();
+    this.#gaze?.disable();
+    this.#gaze = null;
     this.#socketRaw?.close();
     this.#socketRaw = null;
   }
@@ -556,6 +586,94 @@ export class Composer {
       clearTimeout(this.#emergencyTimer);
       this.#emergencyTimer = null;
     }
+  }
+
+  // ---- Gaze (webcam, SPEC §4) ----
+
+  async #toggleGaze(): Promise<void> {
+    if (this.#gaze?.enabled === true) {
+      this.#gaze.disable();
+      this.#gaze = null;
+      this.#setGazeUi(false);
+      return;
+    }
+    if (this.#socketRaw === null) {
+      return;
+    }
+    const controller = new GazeController({
+      socket: this.#socketRaw,
+      surface: SURFACE,
+      targets: this.#gazeTargets(),
+      snapshot: () => {
+        const map = this.#measureTargets();
+        return {
+          viewport: map?.viewport ?? { w: 0, h: 0 },
+          targets: (map?.targets ?? []).map((target) => ({
+            id: target.id,
+            rect: target.rect,
+            role: target.role,
+            label: target.label ?? null,
+          })),
+        };
+      },
+    });
+    try {
+      await controller.enable();
+      this.#gaze = controller;
+      this.#setGazeUi(true);
+    } catch (error) {
+      // No camera/model: keep the mouse/dwell path (input never needs the camera).
+      console.warn("gaze unavailable:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  #setGazeUi(on: boolean): void {
+    this.#gazeBtn.classList.toggle("on", on);
+    this.#gazeBtn.textContent = t(on ? "compose.gazeOn" : "compose.gaze");
+    this.#calibrateBtn.hidden = !on;
+    this.#recordBtn.hidden = !on;
+  }
+
+  async #calibrateGaze(): Promise<void> {
+    try {
+      await this.#gaze?.calibrate();
+    } catch (error) {
+      console.warn("calibration failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  async #recordGaze(): Promise<void> {
+    if (this.#gaze === null) {
+      return;
+    }
+    try {
+      const session = await this.#gaze.record("record-gaze");
+      this.#downloadJson("fluence-gaze-session.json", session);
+    } catch (error) {
+      console.warn("recording failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  /** A spread of ~9 keys to fixate during calibration / recording. */
+  #gazeTargets(): GazeTarget[] {
+    const keys = allKeys();
+    const step = Math.max(1, Math.floor(keys.length / 9));
+    return keys
+      .filter((_, index) => index % step === 0)
+      .map((key) => ({
+        id: key.id,
+        highlight: (on: boolean) => {
+          this.#keyEls.get(key.id)?.classList.toggle("calibrating", on);
+        },
+      }));
+  }
+
+  #downloadJson(filename: string, data: unknown): void {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = h("a", { href: url, download: filename });
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   // ---- Banner / status ----
