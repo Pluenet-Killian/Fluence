@@ -24,6 +24,8 @@ mod schema;
 mod types;
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use secrecy::SecretString;
 use tokio::sync::{mpsc, oneshot};
@@ -67,6 +69,33 @@ pub struct StoreConfig {
 #[derive(Debug, Clone)]
 pub struct Store {
     tx: mpsc::Sender<Command>,
+    /// Joins the owning thread when the last handle drops (see [`StoreThread`]).
+    _thread: Arc<StoreThread>,
+}
+
+/// Owns the store thread's [`JoinHandle`] so the **last** [`Store`] handle to
+/// drop joins it. Without this the thread is detached: on a graceful shutdown
+/// it would run its final WAL checkpoint — touching `SQLCipher`/`OpenSSL`
+/// statics — while the process and the async runtime tear down around it, an
+/// intermittent `SIGABRT` (seen as a flaky teardown of the `next_chars`
+/// integration test, whose tests all pass before the abort). Joining makes
+/// shutdown deterministic; it never affects the kill-tests, which `kill -9` the
+/// process (no graceful drop — the WAL design covers that).
+#[derive(Debug)]
+struct StoreThread {
+    handle: Option<JoinHandle<()>>,
+}
+
+impl Drop for StoreThread {
+    fn drop(&mut self) {
+        // The last handle is gone → every `Sender` is dropped → the actor's
+        // `blocking_recv` returns `None`, the loop exits, the final checkpoint
+        // runs and `run` returns. Join so that completes (and the connection
+        // closes) before teardown, instead of racing it.
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 impl Store {
@@ -86,12 +115,17 @@ impl Store {
     pub async fn open(config: StoreConfig) -> Result<Self, StoreError> {
         let (ready_tx, ready_rx) = oneshot::channel();
         let (tx, rx) = mpsc::channel(64);
-        std::thread::Builder::new()
+        let handle = std::thread::Builder::new()
             .name("fluence-store".into())
             .spawn(move || actor::run(&config, rx, ready_tx))
             .expect("spawning the store thread never fails");
         ready_rx.await.map_err(|_| StoreError::Closed)??;
-        Ok(Self { tx })
+        Ok(Self {
+            tx,
+            _thread: Arc::new(StoreThread {
+                handle: Some(handle),
+            }),
+        })
     }
 
     async fn call<R>(
