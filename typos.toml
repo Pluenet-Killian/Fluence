@@ -35,9 +35,10 @@ exemple = "exemple"
 demandes = "demandes"
 symbole = "symbole"
 confirme = "confirme"
-# Chaînes FR de l'interface du composeur web (§7.A).
+# Chaînes FR de l'interface du composeur web (§7.A) et de l'espace aidant (§7.C).
 appareil = "appareil"
 Espace = "Espace"
+composant = "composant"
 
 [files]
 extend-exclude = [

@@ -48,6 +48,12 @@ export type SystemEvent = Schemas["SystemEvent"];
 export type ServerFrame = Schemas["ServerFrame"];
 export type Topic = Schemas["Topic"];
 
+// Caregiver space (SPEC §7.C) — stable.
+export type AccessJournalResponse = Schemas["AccessJournalResponse"];
+export type AccessJournalEntry = Schemas["AccessJournalEntry"];
+export type DeviceList = Schemas["DeviceList"];
+export type DeviceInfo = Schemas["DeviceInfo"];
+
 // Errors (RFC 9457).
 export type Problem = Schemas["Problem"];
 export type ErrorCode = Schemas["ErrorCode"];

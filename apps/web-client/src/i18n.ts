@@ -35,6 +35,19 @@ export const FR = {
   "status.degraded": "Mode dégradé",
   "metrics.wpm": "Mots/min",
   "metrics.ks": "Éco. frappe",
+  "connect.careTitle": "Espace aidant",
+  "connect.careHint": "Collez un jeton « care » (appairez via fluencectl ou l'écran principal).",
+  "care.title": "Espace aidant",
+  "care.health": "Santé du système",
+  "care.noWorkers": "Aucun composant supervisé",
+  "care.devices": "Appareils appairés",
+  "care.noDevices": "Aucun appareil appairé",
+  "care.revoke": "Révoquer",
+  "care.revokeConfirm": "Confirmer la révocation",
+  "care.cancel": "Annuler",
+  "care.revoked": "révoqué",
+  "care.journal": "Journal d'accès",
+  "care.noJournal": "Aucune entrée",
 } as const;
 
 /** A valid translation key. */
