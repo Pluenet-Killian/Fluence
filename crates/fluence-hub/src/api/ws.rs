@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::Response;
-use fluence_input::{DwellConfig, SelectionEngine, SelectionUpdate};
+use fluence_input::{Calibrator, GazePipeline, SelectionUpdate};
 use fluence_protocol::Normalized;
 use fluence_protocol::api::pair::Scope;
 use fluence_protocol::api::system::SystemEvent;
@@ -159,11 +159,11 @@ async fn serve(
     // accumulation replays deterministically (the lib is clock-free, PLAN 5.1).
     let started = Instant::now();
     let mut engine = granted.contains(&Topic::Input).then(|| {
-        let mut engine = SelectionEngine::new(DwellConfig::default());
+        let mut pipeline = GazePipeline::new(Calibrator::new("default"));
         if let Some(map) = state.input_targets() {
-            let _ = engine.set_targets(&map);
+            let _ = pipeline.set_targets(&map);
         }
-        engine
+        pipeline
     });
 
     loop {
@@ -250,17 +250,39 @@ async fn send_frame(socket: &mut WebSocket, frame: &ServerFrame) -> Result<(), a
 /// bus, where every `input`-topic subscriber — the composer and any partner
 /// screen — receives them (SPEC §4.A).
 fn relay_input(
-    engine: &mut SelectionEngine,
+    pipeline: &mut GazePipeline,
     message: &InputClientMessage,
     now: Duration,
     bus: &EventBus,
 ) {
     let updates = match message {
+        // Gaze sources (`gaze:…`, SPEC §4.A convention) run the full calibration
+        // + fusion pipeline; everything else (mouse, by convention `mouse:…`) is
+        // already in screen coordinates and drives the dwell engine directly.
         InputClientMessage::Pointer(sample) => {
-            engine.on_pointer(sample.x.get(), sample.y.get(), now)
+            if sample.src.0.starts_with("gaze:") {
+                pipeline.on_gaze(
+                    &[sample.x.get(), sample.y.get()],
+                    sample.pose,
+                    sample.conf.get(),
+                    now,
+                )
+            } else {
+                pipeline.on_mouse(sample.x.get(), sample.y.get(), now)
+            }
         }
-        InputClientMessage::Switch(_) => engine.on_switch(now),
-        InputClientMessage::TargetsPatch(patch) => engine.apply_patch(patch),
+        InputClientMessage::Switch(_) => pipeline.on_switch(now),
+        InputClientMessage::TargetsPatch(patch) => pipeline.apply_patch(patch),
+        // Calibration (SPEC §4.D): collect pairs, then fit on request. Neither
+        // produces a selection event.
+        InputClientMessage::CalibrationSample { target, x, y, .. } => {
+            pipeline.add_calibration_sample(target, x.get(), y.get());
+            Vec::new()
+        }
+        InputClientMessage::CalibrationFit { .. } => {
+            let _ = pipeline.fit_calibration();
+            Vec::new()
+        }
     };
     for update in updates {
         bus.publish(ServerFrame::Input(stamp(update, now)));
@@ -337,11 +359,39 @@ mod tests {
         })
     }
 
+    /// A gaze pointer sample (`gaze:` source) — routed through the calibration
+    /// + fusion pipeline rather than straight to the dwell engine.
+    fn gaze_at(x: f64, y: f64) -> InputClientMessage {
+        InputClientMessage::Pointer(PointerSample {
+            t: TimestampMicros(0),
+            src: "gaze:test".into(),
+            x: Normalized::new(x).expect("in range"),
+            y: Normalized::new(y).expect("in range"),
+            conf: Normalized::new(1.0).expect("in range"),
+            pose: None,
+        })
+    }
+
+    fn cal_sample(target: &str, x: f64, y: f64) -> InputClientMessage {
+        InputClientMessage::CalibrationSample {
+            surface: "main".into(),
+            target: target.into(),
+            x: Normalized::new(x).expect("in range"),
+            y: Normalized::new(y).expect("in range"),
+        }
+    }
+
+    fn cal_fit() -> InputClientMessage {
+        InputClientMessage::CalibrationFit {
+            surface: "main".into(),
+        }
+    }
+
     #[tokio::test]
     async fn a_sustained_dwell_publishes_a_commit_on_the_bus() {
         let bus = EventBus::new();
         let mut receiver = bus.subscribe();
-        let mut engine = SelectionEngine::new(DwellConfig::default());
+        let mut engine = GazePipeline::new(Calibrator::new("test"));
         let _ = engine.set_targets(&full_surface());
 
         // First sample establishes focus; a second past the base dwell commits.
@@ -373,7 +423,7 @@ mod tests {
         let mut receiver = bus.subscribe();
         // A fresh engine with NO targets — exactly what `serve` builds when the
         // hub's snapshot is still empty. Without seeding, pointers hit nothing.
-        let mut engine = SelectionEngine::new(DwellConfig::default());
+        let mut engine = GazePipeline::new(Calibrator::new("test"));
 
         let map = full_surface();
         let patch = InputClientMessage::TargetsPatch(TargetMapPatch {
@@ -409,12 +459,81 @@ mod tests {
     async fn a_connection_without_targets_publishes_nothing() {
         let bus = EventBus::new();
         let mut receiver = bus.subscribe();
-        let mut engine = SelectionEngine::new(DwellConfig::default());
+        let mut engine = GazePipeline::new(Calibrator::new("test"));
         // No targets declared: a pointer hits nothing, so no event is emitted.
         relay_input(&mut engine, &pointer_at(0.5, 0.5), Duration::ZERO, &bus);
         assert!(
             receiver.try_recv().is_err(),
             "no target ⇒ no selection event"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_calibrated_gaze_stream_commits_via_the_pipeline() {
+        // The end-to-end hub gaze path (SPEC §4.C/§4.D): calibrate from raw-gaze
+        // → target pairs, fit, then a sustained gaze fixation drives the
+        // calibration + fusion + dwell pipeline to a commit on the bus.
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        let mut engine = GazePipeline::new(Calibrator::new("test"));
+        let _ = engine.set_targets(&full_surface());
+
+        for (x, y) in [(0.3, 0.3), (0.7, 0.3), (0.5, 0.7), (0.5, 0.5)] {
+            relay_input(
+                &mut engine,
+                &cal_sample("key_e", x, y),
+                Duration::ZERO,
+                &bus,
+            );
+        }
+        relay_input(&mut engine, &cal_fit(), Duration::ZERO, &bus);
+
+        // Steady fixation, samples within the I-VT loss window so the dwell
+        // accumulates past the base 800 ms.
+        let mut t = 0u64;
+        for _ in 0..12 {
+            relay_input(
+                &mut engine,
+                &gaze_at(0.5, 0.5),
+                Duration::from_millis(t),
+                &bus,
+            );
+            t += 100;
+        }
+
+        let mut committed = false;
+        while let Ok(frame) = receiver.try_recv() {
+            if matches!(frame, ServerFrame::Input(SelectionEvent::Commit { .. })) {
+                committed = true;
+            }
+        }
+        assert!(
+            committed,
+            "a calibrated, sustained gaze must commit via the pipeline"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_uncalibrated_gaze_publishes_nothing() {
+        // Without a fitted calibration the pipeline cannot map features to the
+        // screen, so it holds and emits nothing (no spurious selection).
+        let bus = EventBus::new();
+        let mut receiver = bus.subscribe();
+        let mut engine = GazePipeline::new(Calibrator::new("test"));
+        let _ = engine.set_targets(&full_surface());
+        let mut t = 0u64;
+        for _ in 0..12 {
+            relay_input(
+                &mut engine,
+                &gaze_at(0.5, 0.5),
+                Duration::from_millis(t),
+                &bus,
+            );
+            t += 100;
+        }
+        assert!(
+            receiver.try_recv().is_err(),
+            "uncalibrated gaze must emit nothing"
         );
     }
 

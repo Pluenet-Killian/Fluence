@@ -322,6 +322,57 @@
         "k"
       ],
       "type": "object"
+    },
+    {
+      "description": "One calibration pair (SPEC §4.D): the raw gaze point `(x, y)` observed\nwhile the user looked at `target` on `surface`. The hub pairs it with the\ntarget's centre to fit the gaze→screen mapping. Collected during the\nsmooth-pursuit / express calibration the client animates.",
+      "properties": {
+        "k": {
+          "const": "cal.sample",
+          "type": "string"
+        },
+        "surface": {
+          "$ref": "#/$defs/SurfaceId",
+          "description": "Surface being calibrated."
+        },
+        "target": {
+          "$ref": "#/$defs/TargetId",
+          "description": "Target the user was looking at (ground truth for this pair)."
+        },
+        "x": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Raw gaze X in `[0, 1]` (the client's uncalibrated estimate)."
+        },
+        "y": {
+          "$ref": "#/$defs/Normalized",
+          "description": "Raw gaze Y in `[0, 1]`."
+        }
+      },
+      "required": [
+        "k",
+        "surface",
+        "target",
+        "x",
+        "y"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Fit (or refit) the calibration mapping for `surface` from the samples\ncollected so far (SPEC §4.D). Sent at the end of a calibration sequence.",
+      "properties": {
+        "k": {
+          "const": "cal.fit",
+          "type": "string"
+        },
+        "surface": {
+          "$ref": "#/$defs/SurfaceId",
+          "description": "Surface to fit."
+        }
+      },
+      "required": [
+        "k",
+        "surface"
+      ],
+      "type": "object"
     }
   ],
   "title": "InputClientMessage"

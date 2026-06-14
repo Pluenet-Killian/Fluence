@@ -672,7 +672,23 @@ export interface components {
          *     target patches from UIs. Hub-managed drivers bypass this entirely
          *     (in-process direct path).
          */
-        InputClientMessage: components["schemas"]["PointerSample"] | components["schemas"]["SwitchEvent"] | components["schemas"]["TargetMapPatch"];
+        InputClientMessage: components["schemas"]["PointerSample"] | components["schemas"]["SwitchEvent"] | components["schemas"]["TargetMapPatch"] | {
+            /** @constant */
+            k: "cal.sample";
+            /** @description Surface being calibrated. */
+            surface: components["schemas"]["SurfaceId"];
+            /** @description Target the user was looking at (ground truth for this pair). */
+            target: components["schemas"]["TargetId"];
+            /** @description Raw gaze X in `[0, 1]` (the client's uncalibrated estimate). */
+            x: components["schemas"]["Normalized"];
+            /** @description Raw gaze Y in `[0, 1]`. */
+            y: components["schemas"]["Normalized"];
+        } | {
+            /** @constant */
+            k: "cal.fit";
+            /** @description Surface to fit. */
+            surface: components["schemas"]["SurfaceId"];
+        };
         /** @description Keyboard layouts v1 (SPEC §7.A). */
         KeyboardLayout: "azerty" | "frequency_fr" | "abc";
         /** @description Keyboard preferences (SPEC §7.A). */

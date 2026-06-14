@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use fluence_protocol::TargetId;
-use fluence_protocol::input::{HeadPose, TargetMap};
+use fluence_protocol::input::{HeadPose, TargetMap, TargetMapPatch};
 
 use crate::{
     Calibrator, DwellConfig, FusionConfig, GazeState, IvtClassifier, IvtConfig, Magnet,
@@ -76,6 +76,38 @@ impl GazePipeline {
     /// Declares the selectable targets for this surface (SPEC §4.A).
     pub fn set_targets(&mut self, map: &TargetMap) -> Vec<SelectionUpdate> {
         self.engine.set_targets(map)
+    }
+
+    /// Applies an incremental target patch (the WS `targets.patch` path).
+    pub fn apply_patch(&mut self, patch: &TargetMapPatch) -> Vec<SelectionUpdate> {
+        self.engine.apply_patch(patch)
+    }
+
+    /// A **mouse** pointer sample: already in screen coordinates, so it bypasses
+    /// calibration and fusion and drives the dwell engine directly — the
+    /// universal path, identical to the pre-gaze engine (mouse needs no mapping).
+    pub fn on_mouse(&mut self, x: f64, y: f64, now: Duration) -> Vec<SelectionUpdate> {
+        self.engine.on_pointer(x, y, now)
+    }
+
+    /// A switch press: commits the focused target immediately (SPEC §4.A).
+    pub fn on_switch(&mut self, now: Duration) -> Vec<SelectionUpdate> {
+        self.engine.on_switch(now)
+    }
+
+    /// Adds one calibration pair (SPEC §4.D): the raw gaze `(x, y)` observed
+    /// while the user looked at `target`, paired with that target's centre.
+    /// A no-op if the target is not on the current surface.
+    pub fn add_calibration_sample(&mut self, target: &TargetId, x: f64, y: f64) {
+        if let Some(center) = self.engine.target_center(target) {
+            self.calibrator.add_sample(vec![x, y], center);
+        }
+    }
+
+    /// Fits the calibration from the collected pairs (SPEC §4.D); returns the
+    /// estimated RMS error (the visible quality), or `None` if it could not fit.
+    pub fn fit_calibration(&mut self) -> Option<f64> {
+        self.calibrator.fit()
     }
 
     /// The calibrator (read-only) — exposes the live calibration quality (§4.D).

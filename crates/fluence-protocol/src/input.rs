@@ -236,6 +236,28 @@ pub enum InputClientMessage {
     /// An incremental target update.
     #[serde(rename = "targets.patch")]
     TargetsPatch(TargetMapPatch),
+    /// One calibration pair (SPEC §4.D): the raw gaze point `(x, y)` observed
+    /// while the user looked at `target` on `surface`. The hub pairs it with the
+    /// target's centre to fit the gaze→screen mapping. Collected during the
+    /// smooth-pursuit / express calibration the client animates.
+    #[serde(rename = "cal.sample")]
+    CalibrationSample {
+        /// Surface being calibrated.
+        surface: SurfaceId,
+        /// Target the user was looking at (ground truth for this pair).
+        target: TargetId,
+        /// Raw gaze X in `[0, 1]` (the client's uncalibrated estimate).
+        x: Normalized,
+        /// Raw gaze Y in `[0, 1]`.
+        y: Normalized,
+    },
+    /// Fit (or refit) the calibration mapping for `surface` from the samples
+    /// collected so far (SPEC §4.D). Sent at the end of a calibration sequence.
+    #[serde(rename = "cal.fit")]
+    CalibrationFit {
+        /// Surface to fit.
+        surface: SurfaceId,
+    },
 }
 
 /// Hub → UI selection events on the `input` topic (SPEC §4.A).
