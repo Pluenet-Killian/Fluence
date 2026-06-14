@@ -1,0 +1,4 @@
+# Provisioned, offline gaze assets — large binaries, not versioned
+# (downloaded once; see docs/demos/phase6-gaze.md).
+/public/mediapipe/
+/public/models/
