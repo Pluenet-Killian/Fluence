@@ -13,6 +13,42 @@ définis en SPEC D-12.2).
   /api/v1/devices/{id}` (scope `care`, 204, idempotent) + `fluencectl revoke
   <id>`. Un appareil perdu ou compromis est coupé immédiatement (son token
   cesse d'authentifier). Couvert par 2 tests hub.
+- **Sauvegarde/restauration chiffrées + kit de secours + purge (7.3)** :
+  `fluence-store` — `RecoverySecret` (256 bits → phrase imprimable hex groupée +
+  checksum, qui **est** la clé brute SQLCipher : pas de KDF), `back_up`/`restore`
+  re-chiffrés via `sqlcipher_export` (réutilise le chiffrement audité ; la
+  **restauration entre deux clés machine est un test CI**), `purge_content`
+  (efface drafts+profils, VACUUM — SPEC §9.A « oubli »). Commandes **offline du
+  binaire hub** `backup`/`restore`/`wipe` + **kit imprimable** (QR + phrase),
+  réutilisant la résolution config/clé du hub (`store_paths`).
+- **Intégrité des modèles (7.4, D-3.2)** : crate `fluence-models` (source unique
+  du manifeste + validation + `verify_manifest_signature` **minisign**, prouvée
+  contre le **vrai vecteur officiel** + `verify_sha256` + `plan_gc`).
+  `download-test-assets` vérifie la signature **fail-closed** quand
+  `<manifeste>.minisig` + `FLUENCE_MODELS_PUBKEY` sont présents ; `cargo xtask
+  models-gc` récupère les poids non référencés.
+- **Espace aidant web (7.2/SPEC §7.C)** : liste des appareils (`GET
+  /api/v1/devices`, type `DeviceList`) + page `#care` (santé + appareils +
+  **révocation à deux clics** + journal d'accès, scope `care`, jamais de P0) ;
+  3 méthodes SDK typées et testées (`journal`/`devices`/`revokeDevice`).
+- **Soak (7.6)** : `kill_cycles_keep_rss_bounded` (baseline RSS **après warm-up**
+  → supprime le flake, `FLUENCE_SOAK_CYCLES`) + job nightly étendu (300) +
+  protocole 72 h sur FLU-REF (`docs/ops/soak.md`).
+- **Documentation d'installation (7.5)** : `docs/install/` — guide pas-à-pas
+  Windows/Linux, carte « si ça ne marche plus » (1 page, gros corps), matrice de
+  compatibilité trackers v0 (niveaux 0/1).
+- **Desktop (7.1)** : crate `fluence-watchdog` (superviseur de processus pur std,
+  **testé deux OS** — redémarrage < 2 s, backoff plafonné, autostart) + scaffold
+  Tauri (`apps/desktop/tauri.conf.json` + README : architecture, build,
+  **gate signature**).
+
+### Corrigé (fiabilité)
+
+- **Thread du store joint au drop** : le thread propriétaire du store était
+  détaché ; son checkpoint WAL final pouvait courir contre l'arrêt du process
+  (SQLCipher/OpenSSL) → **SIGABRT intermittent** au teardown des tests. Un
+  `Arc<StoreThread>` le joint maintenant au drop du dernier handle (arrêt
+  déterministe ; kill-tests inchangés). Test de régression (WAL drainé).
 
 ### Passe d'audit adversarial (7.7)
 
@@ -41,6 +77,25 @@ définis en SPEC D-12.2).
   client/SDK/e2e, ML/contrats/CI). Faux positifs écartés avec justification : le
   broadcast est un ring borné (256), `TargetMap` est borné par la limite de corps
   (512 KiB), la fuite P0 du draft est déjà couverte par un kill-test.
+- **Robustesse des entrées non fiables** : property-tests adverses sur la math
+  d'entrée (`fluence-input/tests/robustness.rs`) — jamais de panic + finitude
+  préservée sur des `f64` adverses (NaN/∞/extrêmes) ; threat model vérifiable
+  publié (`docs/security/threat-model.md`) ; SECURITY.md rendu exact.
+
+### Mesuré (critère A1)
+
+- **KS% ≥ 25 % ATTEINT** : `cargo xtask run-eval` sur le corpus complet →
+  **n-gram (sans contexte conversationnel) 35,49 %** ≥ 25 % (oracle 66,76 % =
+  plafond ; le LLM pousse vers ce plafond). Reproductible, sans modèle lourd.
+- **Couvertures aux gates** : gate `fluence-input` ≥ 85 % ajouté en CI (en plus
+  de `fluence-protocol`).
+
+### Reste pour A1 / `phase-7-done` (actions physiques uniquement)
+
+- Runner **FLU-REF** → seuils `contractual` (SPEC §5.A). Soak **72 h** one-shot.
+  Installeur **signé** (certificats opérateur) puis **installation < 30 min**
+  chronométrée par un tiers. La chaîne logicielle A1 est complète et testée ; le
+  tag n'est pas posé tant que ces actions physiques ne sont pas faites (§0.8).
 
 ## Phase 6 — Le regard (moteur + gate d'exactitude — en cours, 2026-06-14)
 

@@ -153,6 +153,10 @@ jobs:
       # crates gagnent du vrai code. Phase 1 : fluence-protocol ≥ 85 %.
       - name: fluence-protocol ≥ 85% lines
         run: cargo llvm-cov --package fluence-protocol --fail-under-lines 85
+      # Phase 7: the gaze/input engine is the other dense, pure, heavily-tested
+      # brick — gate it too (PLAN §1, A1 « couvertures aux gates »).
+      - name: fluence-input ≥ 85% lines
+        run: cargo llvm-cov --package fluence-input --fail-under-lines 85
 
   cargo-deny:
     name: dependency licenses & advisories
