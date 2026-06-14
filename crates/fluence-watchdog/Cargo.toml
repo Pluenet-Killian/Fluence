@@ -1,0 +1,15 @@
+[package]
+name = "fluence-watchdog"
+description = "Process watchdog: keep the hub alive (autostart + bounded restart) for the desktop app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing = "0.1.44"

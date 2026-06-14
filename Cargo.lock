@@ -656,6 +656,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluence-watchdog"
+version = "0.0.0"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "fluencectl"
 version = "0.0.0"
 dependencies = [
