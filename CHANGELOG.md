@@ -5,6 +5,36 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
+## Phase 6 — Le regard (moteur + gate d'exactitude — en cours, 2026-06-14)
+
+### Ajouté
+
+- **Moteur de regard complet** (`fluence-input`, SPEC §4.C/§4.D), pur et
+  déterministe : filtre **One Euro** (`one_euro`), **I-VT** fixation/saccade +
+  perte (`fixation`), **fusion** pondérée par confiance + « regard désigne, tête
+  affine » + **magnétisme plafonné 40 %** + **modèle de bruit** par utilisateur
+  (`fusion`), **calibration ridge** par profil — collecte pursuit, fit, mise à
+  jour continue lissée, détection de dérive, profil versionné serde
+  (`calibration`), et le **`GazePipeline`** assemblé (`gaze`).
+- **Gate d'exactitude T4** : `evaluate` rejoue une session (calibration → test)
+  à travers le vrai pipeline et score le % de cibles correctes (`replay`) ;
+  `cargo xtask gaze-accuracy` rejoue des sessions **synthétiques** et **publie la
+  précision en nightly** (`nightly.yml`), avec gate de non-régression à 0,95.
+
+### Vérifié
+
+- 47 tests `fluence-input` (réponses One Euro, segmentation I-VT exacte, cap
+  magnétisme par property test, récupération affine + dérive de calibration,
+  pipeline dwell/saccade, replay) ; `xtask gaze-accuracy` 100 % synthétique.
+
+### Reste (pour `phase-6-done`)
+
+- Câblage hub/contrat (regard → `GazePipeline` par connexion + calibration), source
+  regard MediaPipe du composeur, outil `record-gaze`, **session webcam réelle**
+  (action physique). Honnêteté : les datasets nightly sont **synthétiques** (gate
+  de correction), pas une revendication de précision réelle. ML-regard (6.5) =
+  post-A1 par conception.
+
 ## Phase 5 — La boucle complète (terminée — 2026-06-14, `phase-5-done`)
 
 ### Ajouté
@@ -71,9 +101,11 @@ définis en SPEC D-12.2).
 
 ### Reste (dette)
 
-- P0-scheduler D-3.3, opus + streaming chunké (Phase 7), stockage chiffré des
-  métriques (P2), fix de génération TS de `InputClientMessage` (tag `k` perdu sur
-  variantes newtype). *(Le job `e2e` est désormais un check requis de `main`.)*
+- Rendre le job `e2e` un **check requis** de la protection de `main` (#43 a
+  fusionné pendant qu'il tournait — réussi mais non bloquant). P0-scheduler
+  D-3.3, opus + streaming chunké (Phase 7), stockage chiffré des métriques (P2),
+  fix de génération TS de `InputClientMessage` (tag `k` perdu sur variantes
+  newtype).
 
 ## Phase 4 — Le moteur : LLM réel (2026-06-13)
 
