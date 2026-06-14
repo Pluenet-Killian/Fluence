@@ -14,13 +14,15 @@ Licence : AGPL-3.0-only (application complète, D-10.1).
 | Brique | Statut |
 |---|---|
 | **Watchdog du hub** (`crates/fluence-watchdog`) | ✅ **livré et testé** (spawn + surveille + redémarre < 2 s, backoff plafonné, autostart) — le cœur automatisable de 7.1 |
-| Coquille Tauri (webview → API locale) | 🟡 scaffold (`tauri.conf.json`) ; le `src-tauri` se construit avec la toolchain Tauri (hors CI : WebView2/WebKitGTK requis) |
-| Installeurs MSI/NSIS (Windows), AppImage/deb (Linux) | 🟡 cibles déclarées dans `tauri.conf.json` ; `tauri build` les produit |
-| **Signature** des installeurs (Authenticode / GPG / notarisation) | ⛔ **gate credential** : nécessite des **certificats de release** (secret d'opérateur, jamais dans ce dépôt) |
+| Coquille Tauri (webview → API locale) | ✅ projet `src-tauri/` livré (Cargo.toml + `main.rs` qui supervise le hub via `fluence-watchdog` + `tauri.conf.json`) — **exclu du workspace** (build par la toolchain Tauri, hors CI par-PR : WebView2/WebKitGTK requis) |
+| Installeurs MSI/NSIS (Windows), AppImage/deb (Linux) | ✅ pipeline livré : workflow `release` (dispatch manuel) build le sidecar hub + génère les icônes + `cargo tauri build` ; à valider/finaliser au 1ᵉʳ release réel |
+| **Signature** des installeurs (Authenticode / GPG / notarisation) | ⛔ **gate credential** : nécessite un **certificat de release** (secret d'opérateur, jamais dans ce dépôt) ; le workflow signe **quand le secret est présent**, sinon non signé |
 
-Le watchdog est la partie vérifiable mécaniquement (tests cross-OS) ; la coquille
-et les installeurs exigent la toolchain Tauri, et la **signature** exige des
-certificats — non cochés tant qu'ils ne sont pas réellement produits et signés.
+Le watchdog est vérifié mécaniquement (tests cross-OS). La coquille Tauri compile
+avec la toolchain Tauri (le projet `src-tauri` est écrit sur l'API v2 et validé au
+build toolchain, non en CI par-PR). La **signature** exige un certificat — la case
+« installable » reste non cochée tant qu'un installeur n'est pas réellement signé
+**et** installé chronométré par un tiers (< 30 min, critère A1, PLAN §0.8).
 
 ## Architecture
 
@@ -38,52 +40,55 @@ Tauri), surveillé par `fluence-watchdog`. Si le hub tombe, le watchdog le relan
 sous la barre des 2 s ; la webview se reconnecte (le composeur a déjà sa logique
 de reconnexion WS, et le brouillon est restauré — perte ≤ 1 s, D-2.6).
 
-## Intégration du watchdog (exemple)
+## Le projet `src-tauri`
 
-Dans `src-tauri/src/main.rs` (à construire avec la toolchain Tauri) :
+`src-tauri/src/main.rs` supervise le hub via `crates/fluence-watchdog` (std pur,
+testé en CI sur les deux OS — la logique de supervision est prouvée indépendamment
+de l'enrobage graphique) puis lance la webview pointée sur l'API locale :
 
 ```rust
-use fluence_watchdog::{Watchdog, WatchdogConfig};
-
-fn main() {
-    // Le binaire hub est embarqué comme sidecar Tauri ; on le résout puis on
-    // le supervise. La webview (tauri.conf.json) pointe sur l'API locale.
-    let hub = resolve_sidecar_path("fluence-hub");
-    let _watchdog = Watchdog::spawn(
-        WatchdogConfig::new(hub).env("FLUENCE_WEB_DIR", web_dir()),
-    );
-    tauri::Builder::default()
-        .run(tauri::generate_context!())
-        .expect("error while running the Fluence desktop app");
-    // `_watchdog` drop à la sortie → arrête proprement le hub.
-}
+let _hub = spawn_hub();                 // sidecar fluence-hub sous watchdog (< 2 s)
+tauri::Builder::default()
+    .run(tauri::generate_context!())     // webview → http://127.0.0.1:7411
+    .expect("error while running the Fluence desktop app");
 ```
 
-`crates/fluence-watchdog` est volontairement hors de la toolchain Tauri (std pur,
-testé en CI sur les deux OS) : la logique de supervision est prouvée
-indépendamment de l'enrobage graphique.
+Le crate est **exclu du workspace** (`Cargo.toml` racine) : `cargo build --workspace`
+et la CI par-PR ne le compilent pas (pas de WebView2/WebKitGTK requis). Il se
+construit avec la toolchain Tauri.
 
 ## Construire les installeurs
 
+En local (toolchain Tauri installée : Rust + Node, WebView2 sur Windows /
+WebKitGTK + libs de build sur Linux ; `cargo install tauri-cli --version ^2`) :
+
 ```bash
-pnpm --filter @fluence/web-client build      # la PWA servie par le hub
-cargo build --release -p fluence-hub          # le sidecar
-# Puis, avec la toolchain Tauri installée :
-cargo tauri build                             # → MSI/NSIS (Windows) ou AppImage/deb (Linux)
+pnpm --filter @fluence/web-client build                 # la PWA servie par le hub
+cargo build --release -p fluence-hub                     # le sidecar
+triple=$(rustc -vV | sed -n 's/host: //p')               # ex. x86_64-pc-windows-msvc
+mkdir -p apps/desktop/src-tauri/binaries
+cp target/release/fluence-hub* "apps/desktop/src-tauri/binaries/fluence-hub-$triple"  # (.exe sur Windows)
+cd apps/desktop/src-tauri
+cargo tauri icon icons/source.png        # génère le jeu d'icônes (fournir un PNG source)
+cargo tauri build                        # → MSI/NSIS (Windows) ou AppImage/deb (Linux)
 ```
 
-Pré-requis toolchain : Rust + Node, et selon l'OS WebView2 (Windows) /
-WebKitGTK + librairies de build (Linux). Voir la doc Tauri v2.
+En CI : le workflow **`release`** (dispatch manuel) fait tout ceci (job `desktop`),
+génère un placeholder d'icône, et **signe quand le certificat est configuré**.
 
 ## Signer (étape opérateur, gate credential)
 
-La **clé/le certificat de signature** est un secret d'opérateur, **jamais** dans
-ce dépôt :
+Le **certificat de signature** est un secret d'opérateur, **jamais** dans ce dépôt.
 
-- **Windows** : Authenticode — `tauri.conf.json` → `bundle.windows.certificateThumbprint`
-  (ou variables d'environnement de signature) avec un certificat EV/OV.
-- **Linux** : signature GPG des paquets `deb` ; AppImage signé.
+- **Windows (Authenticode)** : déposer le PFX (base64) dans le secret
+  `WINDOWS_CERTIFICATE_BASE64` et son mot de passe dans `WINDOWS_CERTIFICATE_PASSWORD`.
+  Le job `release` importe le certificat, lit son empreinte et la passe à
+  `cargo tauri build --config '{"bundle":{"windows":{"certificateThumbprint":"…"}}}'`.
+  Les paramètres `digestAlgorithm`/`timestampUrl` sont déjà dans `tauri.conf.json`.
+  Sans le secret → build **non signé** (smoke test uniquement).
+- **Linux** : signer les paquets `deb` (GPG) / l'AppImage selon ta clé.
 
 Tant qu'aucun certificat réel n'a signé un installeur **et** qu'un tiers ne l'a
 pas installé chronométré (< 30 min, critère A1), la case « installable » reste
-non cochée (PLAN §0.8).
+non cochée (PLAN §0.8). Remplacer aussi `icons/source.png` par la vraie identité
+visuelle avant une release publique.

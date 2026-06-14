@@ -48,3 +48,90 @@ jobs:
           name: dry-run-${{ matrix.os }}
           path: dist-dry-run/
           retention-days: 7
+
+  # Signed desktop installers (Phase 7.1). Manual-dispatch only — needs the Tauri
+  # toolchain + system WebView libs (so it stays out of per-PR CI) and, to sign,
+  # a code-signing certificate. Without the cert secret it builds **unsigned**
+  # (still useful for smoke-testing the bundle). The detailed signing runbook is
+  # in apps/desktop/README.md. On first real release this job may need a tweak
+  # (icons/cert specifics) — it is the operator's release pipeline.
+  desktop:
+    name: desktop installers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Install NASM (Windows, vendored OpenSSL)
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+      - name: Install Linux WebView + bundle deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf build-essential file imagemagick
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the PWA the hub serves
+        run: pnpm --filter @fluence/web-client build
+      - name: Build the hub and stage it as the Tauri sidecar
+        shell: bash
+        run: |
+          cargo build --release -p fluence-hub
+          triple=$(rustc -vV | sed -n 's/host: //p')
+          mkdir -p apps/desktop/src-tauri/binaries
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp target/release/fluence-hub.exe "apps/desktop/src-tauri/binaries/fluence-hub-$triple.exe"
+          else
+            cp target/release/fluence-hub "apps/desktop/src-tauri/binaries/fluence-hub-$triple"
+          fi
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Generate placeholder icons (replace with real branding before B1)
+        shell: bash
+        working-directory: apps/desktop/src-tauri
+        run: |
+          mkdir -p icons
+          # A tiny solid-colour source; cargo tauri icon derives every platform
+          # size/format from it. Swap in real artwork for a public release.
+          if command -v magick >/dev/null 2>&1; then magick -size 1024x1024 xc:'#1a1a1a' icons/source.png;
+          elif command -v convert >/dev/null 2>&1; then convert -size 1024x1024 xc:'#1a1a1a' icons/source.png;
+          else
+            printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC' | base64 -d > icons/source.png
+          fi
+          cargo tauri icon icons/source.png
+      - name: Build (signed if a certificate is configured) the installers
+        working-directory: apps/desktop/src-tauri
+        shell: bash
+        env:
+          # Set this repo secret to a base64-encoded PFX to sign on Windows; the
+          # step imports it and sets the thumbprint. Absent ⇒ unsigned build.
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ] && [ -n "$WINDOWS_CERTIFICATE" ]; then
+            echo "$WINDOWS_CERTIFICATE" | base64 -d > cert.pfx
+            powershell -Command "Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\\CurrentUser\\My -Password (ConvertTo-SecureString -String \$env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force)" || true
+            thumb=$(powershell -Command "(Get-PfxData -FilePath cert.pfx -Password (ConvertTo-SecureString -String \$env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force)).EndEntityCertificates[0].Thumbprint")
+            cargo tauri build --config "{\"bundle\":{\"windows\":{\"certificateThumbprint\":\"$thumb\"}}}"
+            rm -f cert.pfx
+          else
+            echo "No signing certificate configured — building UNSIGNED (smoke test only)."
+            cargo tauri build
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fluence-desktop-${{ matrix.os }}
+          path: apps/desktop/src-tauri/target/release/bundle/**/*
+          retention-days: 7

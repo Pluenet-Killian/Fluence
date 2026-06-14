@@ -1,0 +1,20 @@
+[package]
+name = "fluence-desktop"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.89"
+license = "AGPL-3.0-only"
+description = "Fluence desktop app: embeds and supervises the hub (Phase 7.1)"
+repository = "https://github.com/Pluenet-Killian/Fluence"
+authors = ["The Fluence contributors"]
+
+# Built with the Tauri toolchain (tauri-cli + system WebView libs), not the
+# default `cargo build --workspace` — this package is `exclude`d from the root
+# workspace so per-OS CI needs no WebView2/WebKitGTK. See apps/desktop/README.md.
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+fluence-watchdog = { version = "0.0.0", path = "../../../crates/fluence-watchdog" }
