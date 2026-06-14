@@ -19,14 +19,18 @@
 //! calibration arrive with webcam gaze (Phase 6); for now every on-target
 //! sample counts as a fixation.
 
+mod fixation;
 mod geometry;
+mod one_euro;
 
 use std::time::Duration;
 
 use fluence_protocol::Normalized;
 use fluence_protocol::input::{CommitMethod, Target, TargetMap, TargetMapPatch, Viewport};
 
+pub use fixation::{GazeState, IvtClassifier, IvtConfig};
 pub use geometry::hit_test;
+pub use one_euro::{OneEuro, OneEuro2D, OneEuroConfig};
 
 /// Dwell selection parameters (SPEC §4.A, §4.C).
 #[derive(Debug, Clone, Copy)]
