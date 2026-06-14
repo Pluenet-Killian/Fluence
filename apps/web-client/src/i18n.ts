@@ -25,6 +25,7 @@ export const FR = {
   "suggest.slotEmpty": "—",
   "banner.emergencyActive": "⚠ URGENCE déclenchée",
   "banner.emergencyCleared": "Urgence levée",
+  "banner.emergencyFailed": "Échec de l'envoi de l'urgence — réessayez",
   "status.connected": "Connecté",
   "status.reconnecting": "Reconnexion…",
   "status.degraded": "Mode dégradé",

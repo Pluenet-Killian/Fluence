@@ -119,14 +119,16 @@ def cmd_measure(args: argparse.Namespace) -> int:
     train = [d for d in corpus if d.split in (Split.TRAIN, Split.DEV)]
     test = [d for d in corpus if d.split == Split.TEST]
     if not test:
-        # No frozen split: fall back to the whole corpus, but then the n-gram is
-        # overfit in-domain and its KS% is inflated — say so (ADR-0008).
+        # Refuse to measure in-domain: training and testing on the same data
+        # would overfit the n-gram and inflate its KS%, making the rephrase-vs-
+        # n-gram comparison dishonest (ADR-0008). An honest measurement needs a
+        # frozen held-out TEST split — never silently degrade the methodology.
         print(
-            "warning: corpus has no test split; measuring in-domain "
-            "(the n-gram is overfit, its KS% is inflated)",
+            "error: corpus has no frozen TEST split; an honest out-of-domain "
+            "measurement is impossible. Freeze a TEST split (ADR-0008).",
             file=sys.stderr,
         )
-        train, test = corpus, corpus
+        return 2
 
     token: str = args.token or pair_control_token(
         args.hub_url, (args.data_dir / "system.token").read_text(encoding="utf-8").strip()

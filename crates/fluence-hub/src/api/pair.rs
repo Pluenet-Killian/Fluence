@@ -16,6 +16,24 @@ use crate::api::problem_response;
 use crate::auth;
 use crate::state::{AppState, PAIRING_MAX_ATTEMPTS, PAIRING_WINDOW_TTL, PairingWindow};
 
+/// Constant-time equality of two pairing codes: the comparison does not
+/// short-circuit on the first differing byte, so its timing leaks nothing about
+/// how many leading digits matched (defence in depth on top of the 5-attempt
+/// lockout). The code length is fixed (8 digits), so the length check leaks no
+/// secret.
+#[must_use]
+fn codes_match(expected: &str, candidate: &str) -> bool {
+    let (expected, candidate) = (expected.as_bytes(), candidate.as_bytes());
+    if expected.len() != candidate.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in expected.iter().zip(candidate) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
 /// `POST /api/v1/pair/window` (system scope): opens the 2-minute window.
 /// Reopening replaces any previous window (one window at a time).
 pub async fn open_window(
@@ -92,7 +110,7 @@ pub async fn pair_device(
                 *slot = None;
                 Decision::Closed
             }
-            Some(window) if window.code != request.code => {
+            Some(window) if !codes_match(&window.code, &request.code) => {
                 window.attempts += 1;
                 let lockout = window.attempts >= PAIRING_MAX_ATTEMPTS;
                 if lockout {
@@ -176,4 +194,31 @@ pub async fn pair_device(
 fn generate_code() -> String {
     let value: u32 = rand::random_range(0..100_000_000);
     format!("{value:08}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{codes_match, generate_code};
+
+    #[test]
+    fn codes_match_accepts_equal_and_rejects_different() {
+        assert!(codes_match("12345678", "12345678"));
+        assert!(!codes_match("12345678", "12345679")); // last digit differs
+        assert!(!codes_match("12345678", "02345678")); // first digit differs
+        assert!(!codes_match("12345678", "1234567")); // shorter
+        assert!(!codes_match("12345678", "123456789")); // longer
+        assert!(codes_match("", ""));
+    }
+
+    #[test]
+    fn generate_code_is_eight_digits() {
+        for _ in 0..100 {
+            let code = generate_code();
+            assert_eq!(code.len(), 8, "code {code} is not 8 chars");
+            assert!(
+                code.chars().all(|c| c.is_ascii_digit()),
+                "code {code} has non-digits"
+            );
+        }
+    }
 }

@@ -126,9 +126,15 @@ export class FluenceClient {
     }
     for await (const raw of parseSseStream(response.body)) {
       // SSE wire → canonical form: event name is the tag, data the payload.
-      // Transport-level SDK: the hub's shape is trusted, no runtime
-      // validation in v0.
-      const data: unknown = JSON.parse(raw.data);
+      // Transport-level SDK: the hub's shape is trusted, but a malformed frame
+      // (a bug, or a truncated stream) must not throw and kill the generator —
+      // skip it rather than crash the consumer's typing loop.
+      let data: unknown;
+      try {
+        data = JSON.parse(raw.data);
+      } catch {
+        continue;
+      }
       yield { event: raw.event, data } as SuggestEvent;
     }
   }

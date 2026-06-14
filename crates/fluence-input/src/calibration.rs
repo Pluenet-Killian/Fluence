@@ -92,6 +92,16 @@ impl RidgeModel {
         if samples.iter().any(|(f, _)| f.len() != feature_dim) {
             return None;
         }
+        // Reject non-finite inputs up front: a single NaN/Inf would otherwise
+        // poison the normal equations and yield a garbage (silently non-finite)
+        // mapping. A bad sensor frame must not corrupt the calibration.
+        if !lambda.is_finite()
+            || samples.iter().any(|(f, (tx, ty))| {
+                !tx.is_finite() || !ty.is_finite() || f.iter().any(|v| !v.is_finite())
+            })
+        {
+            return None;
+        }
         let dim = feature_dim + 1; // + bias
         // Normal equations: gram = XᵀX (+ λI), rhs = XᵀY.
         let mut gram = vec![vec![0.0; dim]; dim];
@@ -403,6 +413,37 @@ mod tests {
     #[test]
     fn solve_rejects_a_singular_matrix() {
         assert!(solve(&[vec![1.0, 2.0], vec![2.0, 4.0]], &[vec![1.0], vec![2.0]]).is_none());
+    }
+
+    #[test]
+    fn fit_rejects_non_finite_inputs() {
+        // A NaN/Inf feature, target, or lambda must not produce a model (no
+        // garbage mapping from a bad sensor frame).
+        let mut good: Vec<_> = (0..40)
+            .map(|i| (features(i), truth(&features(i))))
+            .collect();
+        assert!(
+            RidgeModel::fit(&good, f64::NAN).is_none(),
+            "NaN lambda must be rejected"
+        );
+        good[0].0[0] = f64::NAN;
+        assert!(
+            RidgeModel::fit(&good, 1e-6).is_none(),
+            "NaN feature must be rejected"
+        );
+        good[0].0[0] = f64::INFINITY;
+        assert!(
+            RidgeModel::fit(&good, 1e-6).is_none(),
+            "Inf feature must be rejected"
+        );
+        let mut bad_target: Vec<_> = (0..40)
+            .map(|i| (features(i), truth(&features(i))))
+            .collect();
+        bad_target[3].1.1 = f64::NAN;
+        assert!(
+            RidgeModel::fit(&bad_target, 1e-6).is_none(),
+            "NaN target must be rejected"
+        );
     }
 
     #[test]

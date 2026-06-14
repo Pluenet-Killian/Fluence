@@ -66,6 +66,7 @@ export class Composer {
   #suggestTimer: Timer | null = null;
   #autosaveTimer: Timer | null = null;
   #emergencyTimer: Timer | null = null;
+  #reconnectTimer: Timer | null = null;
 
   // DOM refs, assigned in render().
   #draftEl!: HTMLElement;
@@ -295,11 +296,39 @@ export class Composer {
       this.#socketRaw = null;
       if (!this.#closed) {
         this.#setStatus("status.reconnecting");
-        setTimeout(() => {
+        this.#reconnectTimer = setTimeout(() => {
+          this.#reconnectTimer = null;
           this.#connect();
         }, RECONNECT_DELAY_MS);
       }
     });
+  }
+
+  /**
+   * Stops the composer and releases its resources: cancels every timer and the
+   * in-flight suggestion, and closes the socket without scheduling a reconnect.
+   * Idempotent. Call before discarding the composer (e.g. on sign-out) so no
+   * orphan timer keeps firing.
+   */
+  close(): void {
+    this.#closed = true;
+    for (const timer of [
+      this.#suggestTimer,
+      this.#autosaveTimer,
+      this.#emergencyTimer,
+      this.#reconnectTimer,
+    ]) {
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+    }
+    this.#suggestTimer = null;
+    this.#autosaveTimer = null;
+    this.#emergencyTimer = null;
+    this.#reconnectTimer = null;
+    this.#suggestAbort?.abort();
+    this.#socketRaw?.close();
+    this.#socketRaw = null;
   }
 
   #onSelection(event: SelectionEvent): void {
@@ -496,11 +525,15 @@ export class Composer {
       this.#armEmergency();
       return;
     }
-    this.#disarmEmergency();
+    // Send first, disarm only on success: if the hub call fails this is a
+    // critical action, so keep it armed for an immediate retry and surface the
+    // failure (never silently swallow it, never pretend it was sent).
     try {
       await this.#client.emergency(true);
+      this.#disarmEmergency();
     } catch (error) {
-      console.warn("emergency failed", error);
+      console.warn("emergency send failed", error instanceof Error ? error.message : error);
+      this.#showBanner(t("banner.emergencyFailed"), false);
     }
   }
 
