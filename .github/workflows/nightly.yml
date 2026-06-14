@@ -44,6 +44,18 @@ jobs:
       - name: Python tests
         run: uv sync --directory ml && uv run --directory ml pytest
 
+  gaze-accuracy:
+    name: gaze accuracy (T4, synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Replay synthetic gaze sessions and publish the accuracy (Phase 6)
+        run: cargo run --release -p xtask -- gaze-accuracy | tee -a "$GITHUB_STEP_SUMMARY"
+
   advisories:
     name: daily dependency advisories
     runs-on: ubuntu-latest
