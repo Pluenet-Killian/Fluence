@@ -2,3 +2,4 @@
 packages:
   - "packages/*"
   - "apps/web-client"
+  - "apps/e2e"
