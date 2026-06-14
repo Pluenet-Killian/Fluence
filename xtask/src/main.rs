@@ -14,6 +14,7 @@ mod assets;
 mod contracts;
 mod eval;
 mod gaze;
+mod gaze_assets;
 mod licenses;
 mod models;
 
@@ -43,6 +44,17 @@ fn main() -> ExitCode {
                 }
             };
             assets::run(&repo_root(), check)
+        }
+        Some("download-gaze-assets") => {
+            let check = match args.next().as_deref() {
+                Some("--check") => true,
+                None => false,
+                Some(other) => {
+                    eprintln!("xtask download-gaze-assets: unknown flag `{other}` (only --check)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            gaze_assets::run(&repo_root(), check)
         }
         Some("run-eval") => {
             let mut suite = String::from("pr");
@@ -98,6 +110,9 @@ fn print_usage() {
     eprintln!("  download-test-assets [--check]");
     eprintln!("                          fetch the pinned test models (sha256-verified,");
     eprintln!("                          resumable); --check validates the manifest only");
+    eprintln!("  download-gaze-assets [--check]");
+    eprintln!("                          provision the offline webcam-gaze assets (model");
+    eprintln!("                          sha256-verified + WASM copied to public/)");
     eprintln!("  run-eval [--suite <name>]");
     eprintln!("                          build the n-gram and run the offline eval suite");
     eprintln!("  gaze-accuracy           replay synthetic gaze sessions through the");
