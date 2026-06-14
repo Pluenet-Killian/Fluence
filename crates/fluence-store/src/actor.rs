@@ -98,6 +98,12 @@ pub enum Command {
         /// Result channel: number of drafts purged (metadata, never P0).
         reply: Reply<u64>,
     },
+    /// Erase all personal content (drafts + profiles) and reclaim the pages
+    /// (SPEC §9.A «&nbsp;oubli&nbsp;»).
+    PurgeContent {
+        /// Result channel: rows removed (metadata, never P0).
+        reply: Reply<u64>,
+    },
     /// Append a journal entry.
     JournalAppend {
         /// Entry to append.
@@ -236,6 +242,9 @@ fn dispatch(conn: &mut Connection, command: Command) -> bool {
             reply,
         } => {
             let _ = reply.send(purge_stale_drafts(conn, older_than_micros));
+        }
+        Command::PurgeContent { reply } => {
+            let _ = reply.send(purge_content(conn));
         }
         Command::JournalAppend { entry, reply } => {
             let _ = reply.send(journal_append(conn, &entry));
@@ -399,6 +408,23 @@ fn purge_stale_drafts(conn: &Connection, older_than_micros: u64) -> Result<u64, 
         params![older_than_micros],
     )?;
     Ok(u64::try_from(purged).unwrap_or(u64::MAX))
+}
+
+/// Erases every draft and profile — the SPEC §9.A content purge
+/// («&nbsp;oubli&nbsp;») — then `VACUUM`s so the freed pages, which still hold
+/// encrypted P0, are rewritten out of the file rather than lingering as
+/// reusable free pages. Devices and the access journal are kept: the user
+/// erased their *content*, not their device pairings or the audit trail.
+/// Returns the row count, which is metadata and safe to surface.
+fn purge_content(conn: &mut Connection) -> Result<u64, StoreError> {
+    let tx = conn.transaction()?;
+    let drafts = tx.execute("DELETE FROM drafts", [])?;
+    let profiles = tx.execute("DELETE FROM profiles", [])?;
+    tx.commit()?;
+    // VACUUM rewrites the database (dropping freed pages) and cannot run
+    // inside a transaction — hence after the commit above.
+    conn.execute_batch("VACUUM")?;
+    Ok(u64::try_from(drafts + profiles).unwrap_or(u64::MAX))
 }
 
 /// Appends a journal entry and trims the table back under
