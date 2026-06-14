@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Fluence",
+  "version": "0.0.0",
+  "identifier": "org.fluence.desktop",
+  "build": {
+    "frontendDist": "../web-client/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Fluence",
+        "width": 1280,
+        "height": 800,
+        "url": "http://127.0.0.1:7411"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "deb", "appimage"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "category": "Utility",
+    "shortDescription": "Fluence — communication assistée, locale et intégrée",
+    "longDescription": "Plateforme de communication open source, locale et intégrée, pour le handicap moteur lourd (SLA). Le clavier parle toujours."
+  }
+}
