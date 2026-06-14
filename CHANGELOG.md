@@ -5,9 +5,18 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ; le
 projet est en pré-alpha, sans release publiée (les jalons A1/B1/1.0 sont
 définis en SPEC D-12.2).
 
-## Durcissement — passe d'audit adversarial (Phase 7.7, 2026-06-14)
+## Phase 7 — Durcissement → A1 (en cours, 2026-06-14)
 
-### Corrigé
+### Ajouté
+
+- **Révocation d'appareil** (espace aidant, 7.2/SPEC §7.C) : `DELETE
+  /api/v1/devices/{id}` (scope `care`, 204, idempotent) + `fluencectl revoke
+  <id>`. Un appareil perdu ou compromis est coupé immédiatement (son token
+  cesse d'authentifier). Couvert par 2 tests hub.
+
+### Passe d'audit adversarial (7.7)
+
+#### Corrigé
 
 - **Sécurité** : la comparaison du code d'appairage est désormais **à temps
   constant** (plus de canal auxiliaire temporel révélant combien de chiffres
@@ -26,7 +35,7 @@ définis en SPEC D-12.2).
 - **Honnêteté (PLAN §0.8)** : `measure.py` **refuse** de mesurer sans split TEST
   gelé (remplace un repli silencieux train=test qui gonflait la baseline n-gram).
 
-### Méthode
+#### Méthode
 
 - Revue adversariale en 4 domaines (moteur regard, sécurité/fiabilité hub,
   client/SDK/e2e, ML/contrats/CI). Faux positifs écartés avec justification : le
