@@ -421,9 +421,14 @@ fn purge_content(conn: &mut Connection) -> Result<u64, StoreError> {
     let drafts = tx.execute("DELETE FROM drafts", [])?;
     let profiles = tx.execute("DELETE FROM profiles", [])?;
     tx.commit()?;
-    // VACUUM rewrites the database (dropping freed pages) and cannot run
-    // inside a transaction — hence after the commit above.
+    // VACUUM rewrites the database without the freed pages (cannot run inside a
+    // transaction). In WAL mode that rewrite lands in the `-wal` sidecar, so
+    // checkpoint(TRUNCATE) immediately after folds it into the main file and
+    // truncates the WAL — otherwise the erased P0 would linger in `-wal` until
+    // the next clean shutdown, and «&nbsp;oubli&nbsp;» (SPEC §9.A) must hold even
+    // if the process is killed right after the purge.
     conn.execute_batch("VACUUM")?;
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
     Ok(u64::try_from(drafts + profiles).unwrap_or(u64::MAX))
 }
 

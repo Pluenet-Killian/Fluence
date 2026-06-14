@@ -131,26 +131,24 @@ impl Drop for Watchdog {
 }
 
 /// The supervising loop: (re)spawn the child, wait, back off, until shutdown.
+///
+/// `restart_count` counts only **real restarts** — a child that actually ran and
+/// then exited on its own. A spawn *failure* (missing binary, transient resource
+/// limit) backs off and retries but is **not** a restart: it would otherwise
+/// inflate the very metric used to tell a one-off crash from a crash loop.
 fn run(config: &WatchdogConfig, shutdown: &AtomicBool, restarts: &AtomicU32) {
     let mut backoff = config.restart_floor;
-    let mut first = true;
     while !shutdown.load(Ordering::SeqCst) {
-        if !first {
-            restarts.fetch_add(1, Ordering::SeqCst);
-            if !sleep_unless_shutdown(backoff, shutdown) {
-                break;
-            }
-            backoff = (backoff * 2).min(config.restart_cap);
-        }
-        first = false;
-
         let started = Instant::now();
         let mut child = match spawn_child(config) {
             Ok(child) => child,
             Err(error) => {
-                // Spawn failed (binary missing, transient resource limit): do
-                // not panic — back off and retry on the next iteration.
+                // No child ran → not a restart. Back off and retry; never panic.
                 tracing::warn!(%error, program = %config.program.display(), "watchdog: spawn failed");
+                if !sleep_unless_shutdown(backoff, shutdown) {
+                    break;
+                }
+                backoff = (backoff * 2).min(config.restart_cap);
                 continue;
             }
         };
@@ -161,11 +159,18 @@ fn run(config: &WatchdogConfig, shutdown: &AtomicBool, restarts: &AtomicU32) {
             let _ = child.wait();
             break;
         }
-        // The child exited on its own. If it had been up long enough, treat it
-        // as a one-off and reset the backoff so the next crash recovers fast.
+
+        // The child exited on its own → we are about to restart it.
+        restarts.fetch_add(1, Ordering::SeqCst);
+        // If it had been up long enough, treat the exit as a one-off and reset
+        // the backoff so the restart is fast; otherwise let it keep escalating.
         if started.elapsed() >= config.stable_after {
             backoff = config.restart_floor;
         }
+        if !sleep_unless_shutdown(backoff, shutdown) {
+            break;
+        }
+        backoff = (backoff * 2).min(config.restart_cap);
     }
 }
 
@@ -258,15 +263,20 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_binary_does_not_panic() {
+    fn a_missing_binary_does_not_panic_and_is_not_a_restart() {
         let mut config = WatchdogConfig::new("fluence-no-such-binary-xyz");
         config.restart_floor = Duration::from_millis(20);
         config.restart_cap = Duration::from_millis(80);
         let watchdog = Watchdog::spawn(config);
-        // Spawn keeps failing; the watchdog backs off and retries, never panics.
-        assert!(wait_until(Duration::from_secs(3), || watchdog
-            .restart_count()
-            >= 1));
+        // The spawn keeps failing; the watchdog backs off and retries (no child
+        // ever runs), never panics. Spawn failures are NOT restarts, so the
+        // counter stays 0; reaching `shutdown` proves no hang.
+        std::thread::sleep(Duration::from_millis(250));
+        assert_eq!(
+            watchdog.restart_count(),
+            0,
+            "a child that never started is not a restart"
+        );
         watchdog.shutdown();
     }
 }

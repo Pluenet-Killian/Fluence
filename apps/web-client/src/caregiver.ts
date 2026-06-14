@@ -149,7 +149,18 @@ export class CaregiverView {
   }
 
   async #revoke(deviceId: string): Promise<void> {
-    await this.#client.revokeDevice(deviceId);
-    await this.#refresh();
+    // Fire-and-forget from the click handler: swallow nothing silently — surface
+    // a non-blocking error (hub down, token expired) so the caregiver has a cue
+    // and a reload path, rather than a stale view and an unhandled rejection.
+    try {
+      await this.#client.revokeDevice(deviceId);
+      await this.#refresh();
+    } catch {
+      this.#showError(t("care.revokeFailed"));
+    }
+  }
+
+  #showError(message: string): void {
+    this.#root.prepend(h("p", { class: "care-error", role: "alert" }, [message]));
   }
 }

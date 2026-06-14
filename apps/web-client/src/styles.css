@@ -262,3 +262,10 @@ body {
   color: #777;
   font-variant-numeric: tabular-nums;
 }
+.care-error {
+  background: var(--danger, #c0392b);
+  color: #fff;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+}
